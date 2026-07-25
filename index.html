@@ -217,6 +217,7 @@
             border: 2px solid var(--border);
             cursor: pointer;
             transition: all 0.2s;
+            flex-shrink: 0;
         }
         .vehicle-chip.active {
             background: var(--primary);
@@ -233,7 +234,7 @@
             border: 1px solid var(--border);
             display: flex;
             gap: 1rem;
-            align-items: center;
+            align-items: flex-start;
         }
         .fill-thumb {
             width: 60px;
@@ -242,10 +243,13 @@
             object-fit: cover;
             flex-shrink: 0;
             background: var(--bg);
+            cursor: pointer;
         }
         .fill-info { flex: 1; min-width: 0; }
         .fill-vehicle { font-weight: 700; font-size: 0.9375rem; }
-        .fill-meta { font-size: 0.75rem; color: var(--text-secondary); margin-top: 0.25rem; }
+        .fill-meta { font-size: 0.75rem; color: var(--text-secondary); margin-top: 0.25rem; line-height: 1.5; }
+        .fill-address { font-size: 0.75rem; color: var(--primary-light); margin-top: 0.25rem; }
+        .fill-actions { display: flex; flex-direction: column; gap: 0.4rem; }
         .fill-amount { text-align: right; }
         .fill-price { font-weight: 700; font-size: 1.125rem; color: var(--primary); }
         .fill-volume { font-size: 0.75rem; color: var(--text-secondary); }
@@ -368,49 +372,6 @@
         }
         .toast.show { transform: translateX(-50%) translateY(0); }
 
-        .switch-row {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            padding: 0.75rem 0;
-        }
-        .switch {
-            position: relative;
-            width: 48px;
-            height: 28px;
-        }
-        .switch input { opacity: 0; width: 0; height: 0; }
-        .slider {
-            position: absolute;
-            cursor: pointer;
-            inset: 0;
-            background: var(--border);
-            border-radius: 28px;
-            transition: 0.3s;
-        }
-        .slider:before {
-            content: "";
-            position: absolute;
-            height: 22px;
-            width: 22px;
-            left: 3px;
-            bottom: 3px;
-            background: white;
-            border-radius: 50%;
-            transition: 0.3s;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.2);
-        }
-        input:checked + .slider { background: var(--primary); }
-        input:checked + .slider:before { transform: translateX(20px); }
-
-        .skeleton {
-            background: linear-gradient(90deg, var(--border) 25%, var(--bg) 50%, var(--border) 75%);
-            background-size: 200% 100%;
-            animation: shimmer 1.5s infinite;
-            border-radius: 8px;
-        }
-        @keyframes shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
-
         .install-banner {
             background: linear-gradient(135deg, var(--primary), var(--primary-dark));
             color: white;
@@ -423,6 +384,17 @@
             gap: 1rem;
         }
         .install-banner.show { display: flex; }
+
+        .loc-status {
+            font-size: 0.75rem;
+            padding: 0.4rem 0.75rem;
+            border-radius: 8px;
+            margin-top: 0.5rem;
+            display: none;
+        }
+        .loc-status.loading { display: inline-block; background: #dbeafe; color: #1e40af; }
+        .loc-status.success { display: inline-block; background: #dcfce7; color: #166534; }
+        .loc-status.error { display: inline-block; background: #fee2e2; color: #991b1b; }
 
         @media (min-width: 640px) {
             .content { padding: 2rem; }
@@ -481,7 +453,11 @@
                     <span class="info-label">📍 Localisation</span>
                     <span class="info-value" id="autoLocation">-</span>
                 </div>
-                <button class="btn btn-secondary btn-sm" onclick="refreshLocation()" style="width:auto;margin-top:0.5rem">🔄 Actualiser la position</button>
+                <div id="addressDisplay" class="fill-address" style="display:none;margin-top:0.25rem"></div>
+                <div style="margin-top:0.5rem">
+                    <button class="btn btn-secondary btn-sm" onclick="refreshLocation()" style="width:auto">🔄 Actualiser la position</button>
+                    <span class="loc-status" id="locStatus"></span>
+                </div>
             </div>
 
             <div class="card">
@@ -564,6 +540,41 @@
         </div>
     </div>
 
+    <!-- MODAL: Edit Fill -->
+    <div class="modal-overlay" id="fillModal">
+        <div class="modal">
+            <div class="modal-header">✏️ Modifier le plein</div>
+            <div class="form-group">
+                <label class="form-label">Véhicule</label>
+                <select id="editFillVehicle" class="form-select"></select>
+            </div>
+            <div class="form-group">
+                <label class="form-label">Date & Heure</label>
+                <input type="datetime-local" id="editFillDate" class="form-input">
+            </div>
+            <div class="form-group">
+                <label class="form-label">Volume (litres)</label>
+                <input type="number" id="editFillVolume" class="form-input" step="0.01">
+            </div>
+            <div class="form-group">
+                <label class="form-label">Prix au litre (€)</label>
+                <input type="number" id="editFillPrice" class="form-input" step="0.001">
+            </div>
+            <div class="form-group">
+                <label class="form-label">Prix total (€)</label>
+                <input type="number" id="editFillTotal" class="form-input" step="0.01">
+            </div>
+            <div class="form-group">
+                <label class="form-label">Kilométrage (km)</label>
+                <input type="number" id="editFillKm" class="form-input" step="1">
+            </div>
+            <div class="modal-actions">
+                <button class="btn btn-secondary" onclick="closeFillModal()">Annuler</button>
+                <button class="btn btn-primary" onclick="updateFill()">Enregistrer</button>
+            </div>
+        </div>
+    </div>
+
     <!-- Toast -->
     <div class="toast" id="toast"></div>
 
@@ -582,7 +593,9 @@
         let selectedVehicle = null;
         let currentPhoto = null;
         let currentLocation = null;
+        let currentAddress = null;
         let editingVehicleId = null;
+        let editingFillId = null;
         let statsPeriod = 'month';
         let deferredPrompt = null;
 
@@ -597,7 +610,6 @@
             renderVehicles();
             renderFilters();
 
-            // Calcul auto prix total
             ['volumeInput','priceInput'].forEach(id => {
                 document.getElementById(id).addEventListener('input', calcTotal);
             });
@@ -607,7 +619,16 @@
                 if(v && t) document.getElementById('priceInput').value = (t/v).toFixed(3);
             });
 
-            // Install prompt
+            // Edit fill listeners
+            ['editFillVolume','editFillPrice'].forEach(id => {
+                document.getElementById(id).addEventListener('input', calcEditTotal);
+            });
+            document.getElementById('editFillTotal').addEventListener('input', function() {
+                const v = parseFloat(document.getElementById('editFillVolume').value);
+                const t = parseFloat(this.value);
+                if(v && t) document.getElementById('editFillPrice').value = (t/v).toFixed(3);
+            });
+
             window.addEventListener('beforeinstallprompt', (e) => {
                 e.preventDefault();
                 deferredPrompt = e;
@@ -619,6 +640,11 @@
             const v = parseFloat(document.getElementById('volumeInput').value);
             const p = parseFloat(document.getElementById('priceInput').value);
             if(v && p) document.getElementById('totalInput').value = (v * p).toFixed(2);
+        }
+        function calcEditTotal() {
+            const v = parseFloat(document.getElementById('editFillVolume').value);
+            const p = parseFloat(document.getElementById('editFillPrice').value);
+            if(v && p) document.getElementById('editFillTotal').value = (v * p).toFixed(2);
         }
 
         // ================= NAVIGATION =================
@@ -632,7 +658,7 @@
             if(view === 'vehicles') renderVehicles();
         }
 
-        // ================= DATE / LOCATION =================
+        // ================= DATE / LOCATION / GEOCODING =================
         function updateDateTime() {
             const now = new Date();
             document.getElementById('autoDate').textContent = now.toLocaleString('fr-FR', {
@@ -640,20 +666,63 @@
             });
         }
 
-        function refreshLocation() {
+        async function refreshLocation() {
             const el = document.getElementById('autoLocation');
+            const status = document.getElementById('locStatus');
+            const addrEl = document.getElementById('addressDisplay');
             el.textContent = 'Recherche...';
+            status.className = 'loc-status loading';
+            status.textContent = 'Localisation en cours...';
+            status.style.display = 'inline-block';
+            addrEl.style.display = 'none';
+            currentAddress = null;
+
             if(!navigator.geolocation) {
                 el.textContent = 'Non disponible';
+                status.className = 'loc-status error';
+                status.textContent = 'Géolocalisation non supportée';
                 return;
             }
+
             navigator.geolocation.getCurrentPosition(
-                pos => {
+                async (pos) => {
                     currentLocation = { lat: pos.coords.latitude, lng: pos.coords.longitude };
                     el.textContent = `${pos.coords.latitude.toFixed(4)}, ${pos.coords.longitude.toFixed(4)}`;
+
+                    // Reverse geocoding via Nominatim
+                    status.className = 'loc-status loading';
+                    status.textContent = 'Recherche de l\'adresse...';
+                    try {
+                        const controller = new AbortController();
+                        const timeout = setTimeout(() => controller.abort(), 8000);
+                        const res = await fetch(
+                            `https://nominatim.openstreetmap.org/reverse?format=json&lat=${pos.coords.latitude}&lon=${pos.coords.longitude}&zoom=18&addressdetails=1`,
+                            { signal: controller.signal, headers: { 'Accept-Language': 'fr' } }
+                        );
+                        clearTimeout(timeout);
+                        const data = await res.json();
+                        if(data && data.display_name) {
+                            currentAddress = data.display_name;
+                            addrEl.textContent = '📍 ' + currentAddress;
+                            addrEl.style.display = 'block';
+                            status.className = 'loc-status success';
+                            status.textContent = 'Adresse trouvée';
+                        } else {
+                            status.className = 'loc-status error';
+                            status.textContent = 'Adresse non trouvée';
+                        }
+                    } catch(err) {
+                        status.className = 'loc-status error';
+                        status.textContent = 'Erreur de géocodage';
+                    }
                 },
-                () => { el.textContent = 'Position refusée'; currentLocation = null; },
-                { enableHighAccuracy: true, timeout: 10000 }
+                (err) => {
+                    el.textContent = 'Position refusée';
+                    status.className = 'loc-status error';
+                    status.textContent = err.code === 1 ? 'Permission refusée' : 'Position indisponible';
+                    currentLocation = null;
+                },
+                { enableHighAccuracy: true, timeout: 15000, maximumAge: 60000 }
             );
         }
 
@@ -683,10 +752,7 @@
                 const text = result.data.text;
                 const numbers = text.match(/\d+[,.]?\d*/g) || [];
 
-                // Heuristique simple: chercher des patterns comme XX.XX litres ou €/L
                 let volume = null, price = null;
-
-                // Chercher "L" ou "litre" proche d'un nombre
                 const lines = text.split('\n');
                 for(let line of lines) {
                     const lline = line.toLowerCase();
@@ -700,7 +766,6 @@
                     }
                 }
 
-                // Fallback: prendre les deux plus grands nombres décimaux
                 if(!volume || !price) {
                     const decimals = numbers.filter(n => n.includes(',') || n.includes('.'))
                         .map(n => parseFloat(n.replace(',', '.')))
@@ -869,6 +934,7 @@
                 total: total || (volume * price),
                 km: km || null,
                 location: currentLocation,
+                address: currentAddress,
                 photo: currentPhoto
             };
             fills.unshift(fill);
@@ -880,7 +946,9 @@
             document.getElementById('totalInput').value = '';
             document.getElementById('kmInput').value = '';
             document.getElementById('ocrStatus').style.display = 'none';
+            document.getElementById('addressDisplay').style.display = 'none';
             currentPhoto = null;
+            currentAddress = null;
             const area = document.getElementById('photoArea');
             area.classList.remove('has-image');
             area.innerHTML = `
@@ -892,6 +960,75 @@
             showToast('Plein enregistré !');
             renderHistory();
             renderStats();
+        }
+
+        // ================= EDIT / DELETE FILL =================
+        function openFillModal(fillId) {
+            const f = fills.find(x => x.id === fillId);
+            if(!f) return;
+            editingFillId = fillId;
+
+            // Populate vehicle select
+            const sel = document.getElementById('editFillVehicle');
+            sel.innerHTML = vehicles.map(v => `<option value="${v.id}" ${v.id===f.vehicleId?'selected':''}>${v.name}</option>`).join('');
+
+            // Date (format datetime-local)
+            const d = new Date(f.date);
+            const pad = n => String(n).padStart(2,'0');
+            document.getElementById('editFillDate').value = `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+
+            document.getElementById('editFillVolume').value = f.volume;
+            document.getElementById('editFillPrice').value = f.pricePerLiter;
+            document.getElementById('editFillTotal').value = f.total.toFixed(2);
+            document.getElementById('editFillKm').value = f.km || '';
+
+            document.getElementById('fillModal').classList.add('active');
+        }
+
+        function closeFillModal() {
+            document.getElementById('fillModal').classList.remove('active');
+            editingFillId = null;
+        }
+
+        function updateFill() {
+            if(!editingFillId) return;
+            const idx = fills.findIndex(f => f.id === editingFillId);
+            if(idx === -1) return;
+
+            const vehicleId = document.getElementById('editFillVehicle').value;
+            const dateVal = document.getElementById('editFillDate').value;
+            const volume = parseFloat(document.getElementById('editFillVolume').value);
+            const price = parseFloat(document.getElementById('editFillPrice').value);
+            const total = parseFloat(document.getElementById('editFillTotal').value);
+            const km = parseFloat(document.getElementById('editFillKm').value);
+
+            if(!volume || !price) { showToast('Volume et prix requis'); return; }
+
+            fills[idx] = {
+                ...fills[idx],
+                vehicleId,
+                date: dateVal ? new Date(dateVal).toISOString() : fills[idx].date,
+                volume,
+                pricePerLiter: price,
+                total: total || (volume * price),
+                km: km || null
+            };
+            DB.set('fills', fills);
+            closeFillModal();
+            renderHistory();
+            renderStats();
+            renderVehicles();
+            showToast('Plein mis à jour');
+        }
+
+        function deleteFill(fillId) {
+            if(!confirm('Supprimer définitivement ce plein ?')) return;
+            fills = fills.filter(f => f.id !== fillId);
+            DB.set('fills', fills);
+            renderHistory();
+            renderStats();
+            renderVehicles();
+            showToast('Plein supprimé');
         }
 
         // ================= HISTORY =================
@@ -935,6 +1072,7 @@
             container.innerHTML = list.map(f => {
                 const v = vehicles.find(x => x.id === f.vehicleId);
                 const date = new Date(f.date);
+                const addr = f.address ? f.address.split(',').slice(0,2).join(', ') : null;
                 return `
                 <div class="fill-item">
                     ${f.photo ? `<img src="${f.photo}" class="fill-thumb" onclick="showImage('${f.photo}')">` : `<div class="fill-thumb" style="display:flex;align-items:center;justify-content:center;font-size:1.5rem">⛽</div>`}
@@ -944,10 +1082,17 @@
                             📅 ${date.toLocaleDateString('fr-FR')} • 🕐 ${date.toLocaleTimeString('fr-FR', {hour:'2-digit', minute:'2-digit'})}
                             ${f.km ? '• 🛣️ ' + f.km + ' km' : ''}
                         </div>
+                        ${addr ? `<div class="fill-address">📍 ${addr}</div>` : ''}
                     </div>
-                    <div class="fill-amount">
-                        <div class="fill-price">${f.total.toFixed(2)}€</div>
-                        <div class="fill-volume">${f.volume.toFixed(1)}L @ ${f.pricePerLiter.toFixed(3)}€</div>
+                    <div style="display:flex;flex-direction:column;align-items:flex-end;gap:0.4rem">
+                        <div class="fill-amount">
+                            <div class="fill-price">${f.total.toFixed(2)}€</div>
+                            <div class="fill-volume">${f.volume.toFixed(1)}L @ ${f.pricePerLiter.toFixed(3)}€</div>
+                        </div>
+                        <div style="display:flex;gap:0.3rem">
+                            <button class="btn btn-secondary btn-sm" style="padding:0.3rem 0.6rem;font-size:0.75rem" onclick="openFillModal('${f.id}')">✏️</button>
+                            <button class="btn btn-danger btn-sm" style="padding:0.3rem 0.6rem;font-size:0.75rem" onclick="deleteFill('${f.id}')">🗑️</button>
+                        </div>
                     </div>
                 </div>`;
             }).join('');
@@ -983,13 +1128,11 @@
                 return;
             }
 
-            // Totaux
             const totalVol = data.reduce((s,f) => s + f.volume, 0);
             const totalCost = data.reduce((s,f) => s + f.total, 0);
             const avgPrice = data.reduce((s,f) => s + f.pricePerLiter, 0) / data.length;
             const count = data.length;
 
-            // Regroupement
             const groups = {};
             data.forEach(f => {
                 const d = new Date(f.date);
@@ -1005,7 +1148,6 @@
 
             const sortedKeys = Object.keys(groups).sort();
 
-            // HTML
             let html = `
             <div class="stats-grid">
                 <div class="stat-box">
@@ -1058,7 +1200,6 @@
             });
             html += '</div>';
 
-            // Export
             html += `
             <div style="display:flex;gap:0.75rem;margin-top:1rem">
                 <button class="btn btn-secondary" onclick="exportCSV()">📥 Export CSV</button>
@@ -1067,7 +1208,6 @@
 
             container.innerHTML = html;
 
-            // Draw charts
             setTimeout(() => {
                 drawBarChart('costChart', sortedKeys, sortedKeys.map(k => groups[k].cost), 'Dépenses (€)', '#0f766e');
                 drawBarChart('volChart', sortedKeys, sortedKeys.map(k => groups[k].volume), 'Volume (L)', '#14b8a6');
@@ -1095,7 +1235,6 @@
             const barW = Math.max(20, (cw / values.length) * 0.6);
             const gap = (cw - barW * values.length) / (values.length + 1);
 
-            // Grid
             ctx.strokeStyle = getComputedStyle(document.documentElement).getPropertyValue('--border').trim();
             ctx.lineWidth = 1;
             for(let i=0; i<=4; i++) {
@@ -1110,13 +1249,11 @@
                 ctx.fillText((max/4*i).toFixed(0), pad.left - 8, y + 4);
             }
 
-            // Bars
             values.forEach((v, i) => {
                 const x = pad.left + gap + i * (barW + gap);
                 const bh = (v / max) * ch;
                 const y = pad.top + ch - bh;
 
-                // Gradient
                 const grad = ctx.createLinearGradient(0, y, 0, y + bh);
                 grad.addColorStop(0, color);
                 grad.addColorStop(1, color + '80');
@@ -1125,13 +1262,11 @@
                 ctx.roundRect(x, y, barW, bh, 6);
                 ctx.fill();
 
-                // Value on top
                 ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--text').trim();
                 ctx.font = 'bold 11px sans-serif';
                 ctx.textAlign = 'center';
                 ctx.fillText(v.toFixed(0), x + barW/2, y - 6);
 
-                // Label
                 ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--text-secondary').trim();
                 ctx.font = '10px sans-serif';
                 let lbl = labels[i];
@@ -1145,12 +1280,13 @@
 
         // ================= EXPORT =================
         function exportCSV() {
-            let csv = 'Date,Véhicule,Volume(L),Prix/L(€),Total(€),Kilométrage,Latitude,Longitude\n';
+            let csv = 'Date,Vehicule,Volume(L),Prix/L(€),Total(€),Kilometrage,Adresse,Latitude,Longitude\n';
             let data = fills;
             if(historyFilter !== 'all') data = data.filter(f => f.vehicleId === historyFilter);
             data.forEach(f => {
                 const v = vehicles.find(x => x.id === f.vehicleId);
-                csv += `${f.date},${v?v.name:''},${f.volume},${f.pricePerLiter},${f.total},${f.km||''},${f.location?f.location.lat:''},${f.location?f.location.lng:''}\n`;
+                const addr = f.address ? '"' + f.address.replace(/"/g, '""') + '"' : '';
+                csv += `${f.date},${v?v.name:''},${f.volume},${f.pricePerLiter},${f.total},${f.km||''},${addr},${f.location?f.location.lat:''},${f.location?f.location.lng:''}\n`;
             });
             downloadFile(csv, 'fueltrack-export.csv', 'text/csv');
             showToast('Export CSV téléchargé');
@@ -1190,9 +1326,12 @@
             }
         }
 
-        // Close modal on overlay click
+        // Close modals on overlay click
         document.getElementById('vehicleModal').addEventListener('click', e => {
             if(e.target === document.getElementById('vehicleModal')) closeVehicleModal();
+        });
+        document.getElementById('fillModal').addEventListener('click', e => {
+            if(e.target === document.getElementById('fillModal')) closeFillModal();
         });
 
         // Init
