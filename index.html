@@ -1,0 +1,1202 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="theme-color" content="#0f766e">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <title>FuelTrack - Gestion des pleins</title>
+    <link rel="manifest" href="manifest.json">
+    <link rel="apple-touch-icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 192 192'%3E%3Crect fill='%230f766e' width='192' height='192' rx='24'/%3E%3Ctext x='96' y='130' font-size='110' text-anchor='middle' fill='white'%3E⛽%3C/text%3E%3C/svg%3E">
+    <script src='https://cdn.jsdelivr.net/npm/tesseract.js@4/dist/tesseract.min.js'></script>
+    <style>
+        :root {
+            --primary: #0f766e;
+            --primary-light: #14b8a6;
+            --primary-dark: #115e59;
+            --bg: #f0fdfa;
+            --surface: #ffffff;
+            --text: #134e4a;
+            --text-secondary: #5eead4;
+            --border: #ccfbf1;
+            --danger: #ef4444;
+            --success: #22c55e;
+            --warning: #f59e0b;
+            --shadow: 0 4px 6px -1px rgba(0,0,0,0.1), 0 2px 4px -2px rgba(0,0,0,0.1);
+            --shadow-lg: 0 10px 15px -3px rgba(0,0,0,0.1), 0 4px 6px -4px rgba(0,0,0,0.1);
+        }
+        @media (prefers-color-scheme: dark) {
+            :root {
+                --bg: #042f2e;
+                --surface: #115e59;
+                --text: #f0fdfa;
+                --text-secondary: #5eead4;
+                --border: #134e4a;
+                --shadow: 0 4px 6px -1px rgba(0,0,0,0.3);
+                --shadow-lg: 0 10px 15px -3px rgba(0,0,0,0.4);
+            }
+        }
+        * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            overflow-x: hidden;
+        }
+        .app-header {
+            background: linear-gradient(135deg, var(--primary), var(--primary-dark));
+            color: white;
+            padding: 1.2rem 1rem 2.5rem;
+            position: relative;
+            box-shadow: var(--shadow-lg);
+        }
+        .app-header h1 { font-size: 1.5rem; font-weight: 700; letter-spacing: -0.5px; }
+        .app-header p { opacity: 0.9; font-size: 0.875rem; margin-top: 0.25rem; }
+        .nav-tabs {
+            display: flex;
+            background: var(--surface);
+            margin: -1.5rem 1rem 0;
+            border-radius: 16px;
+            box-shadow: var(--shadow-lg);
+            position: relative;
+            z-index: 10;
+            overflow: hidden;
+        }
+        .nav-tab {
+            flex: 1;
+            padding: 1rem 0.5rem;
+            text-align: center;
+            font-size: 0.75rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            cursor: pointer;
+            border: none;
+            background: none;
+            color: var(--text-secondary);
+            transition: all 0.3s;
+            position: relative;
+        }
+        .nav-tab.active { color: var(--primary); }
+        .nav-tab.active::after {
+            content: '';
+            position: absolute;
+            bottom: 0;
+            left: 20%;
+            right: 20%;
+            height: 3px;
+            background: var(--primary);
+            border-radius: 3px 3px 0 0;
+        }
+        .content {
+            flex: 1;
+            padding: 1.5rem 1rem;
+            max-width: 600px;
+            width: 100%;
+            margin: 0 auto;
+        }
+        .view { display: none; animation: fadeIn 0.3s ease; }
+        .view.active { display: block; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+
+        .card {
+            background: var(--surface);
+            border-radius: 16px;
+            padding: 1.25rem;
+            margin-bottom: 1rem;
+            box-shadow: var(--shadow);
+            border: 1px solid var(--border);
+        }
+        .card-title {
+            font-size: 1rem;
+            font-weight: 700;
+            margin-bottom: 1rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+        .form-group { margin-bottom: 1rem; }
+        .form-label {
+            display: block;
+            font-size: 0.875rem;
+            font-weight: 600;
+            margin-bottom: 0.5rem;
+            color: var(--text);
+        }
+        .form-input, .form-select {
+            width: 100%;
+            padding: 0.875rem 1rem;
+            border: 2px solid var(--border);
+            border-radius: 12px;
+            font-size: 1rem;
+            background: var(--bg);
+            color: var(--text);
+            transition: border-color 0.2s;
+            font-family: inherit;
+        }
+        .form-input:focus, .form-select:focus {
+            outline: none;
+            border-color: var(--primary-light);
+        }
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.5rem;
+            padding: 0.875rem 1.5rem;
+            border-radius: 12px;
+            font-size: 0.9375rem;
+            font-weight: 600;
+            border: none;
+            cursor: pointer;
+            transition: all 0.2s;
+            width: 100%;
+        }
+        .btn-primary {
+            background: linear-gradient(135deg, var(--primary), var(--primary-dark));
+            color: white;
+            box-shadow: 0 4px 14px rgba(15, 118, 110, 0.3);
+        }
+        .btn-primary:active { transform: scale(0.98); }
+        .btn-secondary {
+            background: var(--bg);
+            color: var(--text);
+            border: 2px solid var(--border);
+        }
+        .btn-danger { background: var(--danger); color: white; }
+        .btn-success { background: var(--success); color: white; }
+        .btn-sm { padding: 0.5rem 1rem; font-size: 0.875rem; width: auto; }
+
+        .photo-area {
+            border: 3px dashed var(--border);
+            border-radius: 16px;
+            padding: 2rem;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.2s;
+            background: var(--bg);
+            position: relative;
+            overflow: hidden;
+        }
+        .photo-area:hover { border-color: var(--primary-light); }
+        .photo-area.has-image {
+            border-style: solid;
+            border-color: var(--primary-light);
+            padding: 0;
+        }
+        .photo-area img { width: 100%; max-height: 300px; object-fit: cover; border-radius: 12px; display: block; }
+        .photo-placeholder { font-size: 3rem; margin-bottom: 0.5rem; }
+        .photo-text { font-size: 0.875rem; color: var(--text-secondary); }
+        .photo-input { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
+
+        .info-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 0.75rem 0;
+            border-bottom: 1px solid var(--border);
+        }
+        .info-row:last-child { border-bottom: none; }
+        .info-label { font-size: 0.875rem; color: var(--text-secondary); }
+        .info-value { font-weight: 600; font-size: 0.9375rem; }
+
+        .vehicle-chip {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 0.5rem 1rem;
+            background: var(--bg);
+            border-radius: 20px;
+            font-size: 0.875rem;
+            font-weight: 600;
+            margin: 0.25rem;
+            border: 2px solid var(--border);
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .vehicle-chip.active {
+            background: var(--primary);
+            color: white;
+            border-color: var(--primary);
+        }
+
+        .fill-item {
+            background: var(--surface);
+            border-radius: 16px;
+            padding: 1rem;
+            margin-bottom: 0.75rem;
+            box-shadow: var(--shadow);
+            border: 1px solid var(--border);
+            display: flex;
+            gap: 1rem;
+            align-items: center;
+        }
+        .fill-thumb {
+            width: 60px;
+            height: 60px;
+            border-radius: 12px;
+            object-fit: cover;
+            flex-shrink: 0;
+            background: var(--bg);
+        }
+        .fill-info { flex: 1; min-width: 0; }
+        .fill-vehicle { font-weight: 700; font-size: 0.9375rem; }
+        .fill-meta { font-size: 0.75rem; color: var(--text-secondary); margin-top: 0.25rem; }
+        .fill-amount { text-align: right; }
+        .fill-price { font-weight: 700; font-size: 1.125rem; color: var(--primary); }
+        .fill-volume { font-size: 0.75rem; color: var(--text-secondary); }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 0.75rem;
+            margin-bottom: 1rem;
+        }
+        .stat-box {
+            background: var(--bg);
+            border-radius: 12px;
+            padding: 1rem;
+            text-align: center;
+            border: 1px solid var(--border);
+        }
+        .stat-value { font-size: 1.5rem; font-weight: 700; color: var(--primary); }
+        .stat-label { font-size: 0.75rem; color: var(--text-secondary); margin-top: 0.25rem; text-transform: uppercase; }
+
+        .chart-container {
+            position: relative;
+            height: 250px;
+            margin: 1rem 0;
+        }
+
+        .modal-overlay {
+            position: fixed;
+            inset: 0;
+            background: rgba(0,0,0,0.5);
+            backdrop-filter: blur(4px);
+            z-index: 100;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            padding: 1rem;
+        }
+        .modal-overlay.active { display: flex; }
+        .modal {
+            background: var(--surface);
+            border-radius: 20px;
+            padding: 1.5rem;
+            width: 100%;
+            max-width: 400px;
+            max-height: 90vh;
+            overflow-y: auto;
+            animation: modalIn 0.3s ease;
+        }
+        @keyframes modalIn { from { opacity: 0; transform: scale(0.9); } to { opacity: 1; transform: scale(1); } }
+        .modal-header { font-size: 1.25rem; font-weight: 700; margin-bottom: 1rem; }
+        .modal-actions { display: flex; gap: 0.75rem; margin-top: 1.5rem; }
+        .modal-actions .btn { flex: 1; }
+
+        .empty-state {
+            text-align: center;
+            padding: 3rem 1rem;
+            color: var(--text-secondary);
+        }
+        .empty-state .icon { font-size: 4rem; margin-bottom: 1rem; opacity: 0.5; }
+
+        .ocr-status {
+            font-size: 0.75rem;
+            padding: 0.5rem;
+            border-radius: 8px;
+            margin-top: 0.5rem;
+            text-align: center;
+            display: none;
+        }
+        .ocr-status.loading { display: block; background: #dbeafe; color: #1e40af; }
+        .ocr-status.success { display: block; background: #dcfce7; color: #166534; }
+        .ocr-status.error { display: block; background: #fee2e2; color: #991b1b; }
+
+        .filter-bar {
+            display: flex;
+            gap: 0.5rem;
+            overflow-x: auto;
+            padding-bottom: 0.5rem;
+            margin-bottom: 1rem;
+            -webkit-overflow-scrolling: touch;
+            scrollbar-width: none;
+        }
+        .filter-bar::-webkit-scrollbar { display: none; }
+
+        .period-selector {
+            display: flex;
+            background: var(--bg);
+            border-radius: 10px;
+            padding: 0.25rem;
+            margin-bottom: 1rem;
+        }
+        .period-btn {
+            flex: 1;
+            padding: 0.5rem;
+            border: none;
+            background: none;
+            border-radius: 8px;
+            font-size: 0.875rem;
+            font-weight: 600;
+            color: var(--text-secondary);
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .period-btn.active { background: var(--surface); color: var(--primary); box-shadow: var(--shadow); }
+
+        .toast {
+            position: fixed;
+            bottom: 2rem;
+            left: 50%;
+            transform: translateX(-50%) translateY(100px);
+            background: var(--text);
+            color: var(--bg);
+            padding: 0.875rem 1.5rem;
+            border-radius: 12px;
+            font-weight: 600;
+            font-size: 0.875rem;
+            box-shadow: var(--shadow-lg);
+            z-index: 200;
+            transition: transform 0.3s ease;
+            white-space: nowrap;
+        }
+        .toast.show { transform: translateX(-50%) translateY(0); }
+
+        .switch-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 0.75rem 0;
+        }
+        .switch {
+            position: relative;
+            width: 48px;
+            height: 28px;
+        }
+        .switch input { opacity: 0; width: 0; height: 0; }
+        .slider {
+            position: absolute;
+            cursor: pointer;
+            inset: 0;
+            background: var(--border);
+            border-radius: 28px;
+            transition: 0.3s;
+        }
+        .slider:before {
+            content: "";
+            position: absolute;
+            height: 22px;
+            width: 22px;
+            left: 3px;
+            bottom: 3px;
+            background: white;
+            border-radius: 50%;
+            transition: 0.3s;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+        }
+        input:checked + .slider { background: var(--primary); }
+        input:checked + .slider:before { transform: translateX(20px); }
+
+        .skeleton {
+            background: linear-gradient(90deg, var(--border) 25%, var(--bg) 50%, var(--border) 75%);
+            background-size: 200% 100%;
+            animation: shimmer 1.5s infinite;
+            border-radius: 8px;
+        }
+        @keyframes shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
+
+        .install-banner {
+            background: linear-gradient(135deg, var(--primary), var(--primary-dark));
+            color: white;
+            padding: 1rem;
+            border-radius: 16px;
+            margin-bottom: 1rem;
+            display: none;
+            align-items: center;
+            justify-content: space-between;
+            gap: 1rem;
+        }
+        .install-banner.show { display: flex; }
+
+        @media (min-width: 640px) {
+            .content { padding: 2rem; }
+            .stats-grid { grid-template-columns: repeat(4, 1fr); }
+        }
+    </style>
+</head>
+<body>
+    <div class="app-header">
+        <h1>⛽ FuelTrack</h1>
+        <p>Suivez vos pleins de carburant</p>
+    </div>
+
+    <div class="nav-tabs">
+        <button class="nav-tab active" onclick="showView('add')">📝 Nouveau</button>
+        <button class="nav-tab" onclick="showView('history')">📋 Historique</button>
+        <button class="nav-tab" onclick="showView('stats')">📊 Stats</button>
+        <button class="nav-tab" onclick="showView('vehicles')">🚗 Véhicules</button>
+    </div>
+
+    <div class="content">
+        <!-- Install Banner -->
+        <div class="install-banner" id="installBanner">
+            <div>
+                <div style="font-weight:700">Installer l'application</div>
+                <div style="font-size:0.875rem;opacity:0.9">Accès rapide depuis l'écran d'accueil</div>
+            </div>
+            <button class="btn btn-sm" style="background:white;color:var(--primary);white-space:nowrap" onclick="installApp()">Installer</button>
+        </div>
+
+        <!-- VIEW: ADD FILL -->
+        <div class="view active" id="view-add">
+            <div class="card">
+                <div class="card-title">📸 Photo du compteur</div>
+                <div class="photo-area" id="photoArea" onclick="document.getElementById('photoInput').click()">
+                    <div class="photo-placeholder">📷</div>
+                    <div class="photo-text">Appuyez pour prendre une photo</div>
+                    <input type="file" id="photoInput" class="photo-input" accept="image/*" capture="environment" onchange="handlePhoto(event)">
+                </div>
+                <div class="ocr-status" id="ocrStatus"></div>
+            </div>
+
+            <div class="card">
+                <div class="card-title">🚗 Véhicule</div>
+                <div id="vehicleSelector" class="filter-bar"></div>
+                <button class="btn btn-secondary btn-sm" onclick="openVehicleModal()" style="width:auto">+ Ajouter un véhicule</button>
+            </div>
+
+            <div class="card">
+                <div class="card-title">📍 Informations automatiques</div>
+                <div class="info-row">
+                    <span class="info-label">📅 Date & Heure</span>
+                    <span class="info-value" id="autoDate">-</span>
+                </div>
+                <div class="info-row">
+                    <span class="info-label">📍 Localisation</span>
+                    <span class="info-value" id="autoLocation">-</span>
+                </div>
+                <button class="btn btn-secondary btn-sm" onclick="refreshLocation()" style="width:auto;margin-top:0.5rem">🔄 Actualiser la position</button>
+            </div>
+
+            <div class="card">
+                <div class="card-title">⛽ Détails du plein</div>
+                <div class="form-group">
+                    <label class="form-label">Volume (litres)</label>
+                    <input type="number" id="volumeInput" class="form-input" step="0.01" placeholder="Ex: 45.32">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Prix au litre (€)</label>
+                    <input type="number" id="priceInput" class="form-input" step="0.001" placeholder="Ex: 1.789">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Prix total (€) <span style="font-weight:400;color:var(--text-secondary)">- auto</span></label>
+                    <input type="number" id="totalInput" class="form-input" step="0.01" placeholder="Calculé automatiquement">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Kilométrage (km)</label>
+                    <input type="number" id="kmInput" class="form-input" step="1" placeholder="Kilométrage au compteur">
+                </div>
+            </div>
+
+            <button class="btn btn-primary" onclick="saveFill()" id="saveBtn">
+                💾 Enregistrer le plein
+            </button>
+        </div>
+
+        <!-- VIEW: HISTORY -->
+        <div class="view" id="view-history">
+            <div class="filter-bar" id="historyFilter"></div>
+            <div id="historyList"></div>
+        </div>
+
+        <!-- VIEW: STATS -->
+        <div class="view" id="view-stats">
+            <div class="filter-bar" id="statsFilter"></div>
+
+            <div class="period-selector">
+                <button class="period-btn active" onclick="setPeriod('month')">Mensuel</button>
+                <button class="period-btn" onclick="setPeriod('year')">Annuel</button>
+            </div>
+
+            <div id="statsContent"></div>
+        </div>
+
+        <!-- VIEW: VEHICLES -->
+        <div class="view" id="view-vehicles">
+            <div id="vehiclesList"></div>
+            <button class="btn btn-primary" onclick="openVehicleModal()">+ Ajouter un véhicule</button>
+        </div>
+    </div>
+
+    <!-- MODAL: Vehicle -->
+    <div class="modal-overlay" id="vehicleModal">
+        <div class="modal">
+            <div class="modal-header">🚗 Véhicule</div>
+            <div class="form-group">
+                <label class="form-label">Nom du véhicule</label>
+                <input type="text" id="vehicleName" class="form-input" placeholder="Ex: Peugeot 208">
+            </div>
+            <div class="form-group">
+                <label class="form-label">Immatriculation</label>
+                <input type="text" id="vehiclePlate" class="form-input" placeholder="Ex: AB-123-CD">
+            </div>
+            <div class="form-group">
+                <label class="form-label">Type de carburant</label>
+                <select id="vehicleFuel" class="form-select">
+                    <option value="SP95">SP95</option>
+                    <option value="SP98">SP98</option>
+                    <option value="E10">E10</option>
+                    <option value="Diesel">Diesel</option>
+                    <option value="GPL">GPL</option>
+                    <option value="Électrique">Électrique</option>
+                </select>
+            </div>
+            <div class="modal-actions">
+                <button class="btn btn-secondary" onclick="closeVehicleModal()">Annuler</button>
+                <button class="btn btn-primary" onclick="saveVehicle()">Enregistrer</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast -->
+    <div class="toast" id="toast"></div>
+
+    <script>
+        // ================= DATA STORE =================
+        const DB = {
+            get(key, def) {
+                try { return JSON.parse(localStorage.getItem(key)) || def; }
+                catch { return def; }
+            },
+            set(key, val) { localStorage.setItem(key, JSON.stringify(val)); }
+        };
+
+        let vehicles = DB.get('vehicles', []);
+        let fills = DB.get('fills', []);
+        let selectedVehicle = null;
+        let currentPhoto = null;
+        let currentLocation = null;
+        let editingVehicleId = null;
+        let statsPeriod = 'month';
+        let deferredPrompt = null;
+
+        // ================= INIT =================
+        function init() {
+            updateDateTime();
+            setInterval(updateDateTime, 1000);
+            refreshLocation();
+            renderVehicleSelector();
+            renderHistory();
+            renderStats();
+            renderVehicles();
+            renderFilters();
+
+            // Calcul auto prix total
+            ['volumeInput','priceInput'].forEach(id => {
+                document.getElementById(id).addEventListener('input', calcTotal);
+            });
+            document.getElementById('totalInput').addEventListener('input', function() {
+                const v = parseFloat(document.getElementById('volumeInput').value);
+                const t = parseFloat(this.value);
+                if(v && t) document.getElementById('priceInput').value = (t/v).toFixed(3);
+            });
+
+            // Install prompt
+            window.addEventListener('beforeinstallprompt', (e) => {
+                e.preventDefault();
+                deferredPrompt = e;
+                document.getElementById('installBanner').classList.add('show');
+            });
+        }
+
+        function calcTotal() {
+            const v = parseFloat(document.getElementById('volumeInput').value);
+            const p = parseFloat(document.getElementById('priceInput').value);
+            if(v && p) document.getElementById('totalInput').value = (v * p).toFixed(2);
+        }
+
+        // ================= NAVIGATION =================
+        function showView(view) {
+            document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+            document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
+            document.getElementById('view-' + view).classList.add('active');
+            event.target.classList.add('active');
+            if(view === 'history') renderHistory();
+            if(view === 'stats') renderStats();
+            if(view === 'vehicles') renderVehicles();
+        }
+
+        // ================= DATE / LOCATION =================
+        function updateDateTime() {
+            const now = new Date();
+            document.getElementById('autoDate').textContent = now.toLocaleString('fr-FR', {
+                weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit'
+            });
+        }
+
+        function refreshLocation() {
+            const el = document.getElementById('autoLocation');
+            el.textContent = 'Recherche...';
+            if(!navigator.geolocation) {
+                el.textContent = 'Non disponible';
+                return;
+            }
+            navigator.geolocation.getCurrentPosition(
+                pos => {
+                    currentLocation = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+                    el.textContent = `${pos.coords.latitude.toFixed(4)}, ${pos.coords.longitude.toFixed(4)}`;
+                },
+                () => { el.textContent = 'Position refusée'; currentLocation = null; },
+                { enableHighAccuracy: true, timeout: 10000 }
+            );
+        }
+
+        // ================= PHOTO & OCR =================
+        function handlePhoto(e) {
+            const file = e.target.files[0];
+            if(!file) return;
+            const reader = new FileReader();
+            reader.onload = function(ev) {
+                currentPhoto = ev.target.result;
+                const area = document.getElementById('photoArea');
+                area.innerHTML = `<img src="${currentPhoto}" alt="Compteur">`;
+                area.classList.add('has-image');
+                runOCR(currentPhoto);
+            };
+            reader.readAsDataURL(file);
+        }
+
+        async function runOCR(imageData) {
+            const status = document.getElementById('ocrStatus');
+            status.className = 'ocr-status loading';
+            status.textContent = '🔍 Analyse de la photo en cours...';
+            try {
+                const result = await Tesseract.recognize(imageData, 'fra', {
+                    logger: m => { if(m.status === 'recognizing text') status.textContent = `🔍 Analyse... ${Math.round(m.progress*100)}%`; }
+                });
+                const text = result.data.text;
+                const numbers = text.match(/\d+[,.]?\d*/g) || [];
+
+                // Heuristique simple: chercher des patterns comme XX.XX litres ou €/L
+                let volume = null, price = null;
+
+                // Chercher "L" ou "litre" proche d'un nombre
+                const lines = text.split('\n');
+                for(let line of lines) {
+                    const lline = line.toLowerCase();
+                    if((lline.includes('l') || lline.includes('litre')) && !volume) {
+                        const m = line.match(/(\d+[,.]\d+)/);
+                        if(m) volume = parseFloat(m[1].replace(',', '.'));
+                    }
+                    if((lline.includes('€') || lline.includes('eur') || lline.includes('prix')) && !price) {
+                        const m = line.match(/(\d+[,.]\d{2,3})/);
+                        if(m) price = parseFloat(m[1].replace(',', '.'));
+                    }
+                }
+
+                // Fallback: prendre les deux plus grands nombres décimaux
+                if(!volume || !price) {
+                    const decimals = numbers.filter(n => n.includes(',') || n.includes('.'))
+                        .map(n => parseFloat(n.replace(',', '.')))
+                        .filter(n => n > 0.5 && n < 200);
+                    decimals.sort((a,b) => b-a);
+                    if(!volume && decimals[0]) volume = decimals[0];
+                    if(!price && decimals[1]) price = decimals[1];
+                }
+
+                if(volume) document.getElementById('volumeInput').value = volume;
+                if(price) document.getElementById('priceInput').value = price;
+                calcTotal();
+
+                status.className = 'ocr-status success';
+                status.textContent = volume || price 
+                    ? `✅ Détecté: ${volume ? volume+'L' : ''} ${price ? price+'€/L' : ''}`
+                    : '✅ Photo analysée (aucune valeur détectée)';
+            } catch(err) {
+                status.className = 'ocr-status error';
+                status.textContent = '❌ Échec OCR - Saisie manuelle requise';
+            }
+        }
+
+        // ================= VEHICLES =================
+        function renderVehicleSelector() {
+            const container = document.getElementById('vehicleSelector');
+            if(!vehicles.length) {
+                container.innerHTML = '<span style="color:var(--text-secondary);font-size:0.875rem">Aucun véhicule</span>';
+                return;
+            }
+            container.innerHTML = vehicles.map(v => `
+                <div class="vehicle-chip ${selectedVehicle===v.id?'active':''}" onclick="selectVehicle('${v.id}')">
+                    🚗 ${v.name}
+                </div>
+            `).join('');
+        }
+
+        function selectVehicle(id) {
+            selectedVehicle = id;
+            renderVehicleSelector();
+        }
+
+        function renderVehicles() {
+            const container = document.getElementById('vehiclesList');
+            if(!vehicles.length) {
+                container.innerHTML = `
+                    <div class="empty-state">
+                        <div class="icon">🚗</div>
+                        <div>Aucun véhicule enregistré</div>
+                    </div>`;
+                return;
+            }
+            container.innerHTML = vehicles.map(v => {
+                const vFills = fills.filter(f => f.vehicleId === v.id);
+                const totalVol = vFills.reduce((s,f) => s + (f.volume||0), 0);
+                const totalCost = vFills.reduce((s,f) => s + (f.total||0), 0);
+                return `
+                <div class="card">
+                    <div style="display:flex;justify-content:space-between;align-items:start">
+                        <div>
+                            <div style="font-weight:700;font-size:1.1rem">🚗 ${v.name}</div>
+                            <div style="font-size:0.875rem;color:var(--text-secondary);margin-top:0.25rem">
+                                ${v.plate ? '📋 '+v.plate+' • ' : ''}⛽ ${v.fuelType}
+                            </div>
+                        </div>
+                        <div style="display:flex;gap:0.5rem">
+                            <button class="btn btn-secondary btn-sm" onclick="editVehicle('${v.id}')">✏️</button>
+                            <button class="btn btn-danger btn-sm" onclick="deleteVehicle('${v.id}')">🗑️</button>
+                        </div>
+                    </div>
+                    <div class="stats-grid" style="margin-top:1rem">
+                        <div class="stat-box">
+                            <div class="stat-value">${vFills.length}</div>
+                            <div class="stat-label">Pleins</div>
+                        </div>
+                        <div class="stat-box">
+                            <div class="stat-value">${totalVol.toFixed(0)}</div>
+                            <div class="stat-label">Litres</div>
+                        </div>
+                        <div class="stat-box">
+                            <div class="stat-value">${totalCost.toFixed(0)}€</div>
+                            <div class="stat-label">Dépensé</div>
+                        </div>
+                    </div>
+                </div>`;
+            }).join('');
+        }
+
+        function openVehicleModal() {
+            editingVehicleId = null;
+            document.getElementById('vehicleName').value = '';
+            document.getElementById('vehiclePlate').value = '';
+            document.getElementById('vehicleFuel').value = 'SP95';
+            document.getElementById('vehicleModal').classList.add('active');
+        }
+
+        function closeVehicleModal() {
+            document.getElementById('vehicleModal').classList.remove('active');
+        }
+
+        function saveVehicle() {
+            const name = document.getElementById('vehicleName').value.trim();
+            if(!name) { showToast('Nom requis'); return; }
+            const vehicle = {
+                id: editingVehicleId || 'v_' + Date.now(),
+                name,
+                plate: document.getElementById('vehiclePlate').value.trim(),
+                fuelType: document.getElementById('vehicleFuel').value
+            };
+            if(editingVehicleId) {
+                const idx = vehicles.findIndex(v => v.id === editingVehicleId);
+                vehicles[idx] = vehicle;
+            } else {
+                vehicles.push(vehicle);
+                if(!selectedVehicle) selectedVehicle = vehicle.id;
+            }
+            DB.set('vehicles', vehicles);
+            closeVehicleModal();
+            renderVehicleSelector();
+            renderVehicles();
+            renderFilters();
+            showToast('Véhicule enregistré');
+        }
+
+        function editVehicle(id) {
+            const v = vehicles.find(x => x.id === id);
+            if(!v) return;
+            editingVehicleId = id;
+            document.getElementById('vehicleName').value = v.name;
+            document.getElementById('vehiclePlate').value = v.plate || '';
+            document.getElementById('vehicleFuel').value = v.fuelType || 'SP95';
+            document.getElementById('vehicleModal').classList.add('active');
+        }
+
+        function deleteVehicle(id) {
+            if(!confirm('Supprimer ce véhicule et tous ses pleins ?')) return;
+            vehicles = vehicles.filter(v => v.id !== id);
+            fills = fills.filter(f => f.vehicleId !== id);
+            DB.set('vehicles', vehicles);
+            DB.set('fills', fills);
+            if(selectedVehicle === id) selectedVehicle = vehicles[0]?.id || null;
+            renderVehicleSelector();
+            renderVehicles();
+            renderHistory();
+            renderStats();
+            renderFilters();
+            showToast('Véhicule supprimé');
+        }
+
+        // ================= SAVE FILL =================
+        function saveFill() {
+            if(!selectedVehicle) { showToast('Sélectionnez un véhicule'); return; }
+            const volume = parseFloat(document.getElementById('volumeInput').value);
+            const price = parseFloat(document.getElementById('priceInput').value);
+            const total = parseFloat(document.getElementById('totalInput').value);
+            const km = parseFloat(document.getElementById('kmInput').value);
+
+            if(!volume || !price) { showToast('Volume et prix requis'); return; }
+
+            const fill = {
+                id: 'f_' + Date.now(),
+                vehicleId: selectedVehicle,
+                date: new Date().toISOString(),
+                volume,
+                pricePerLiter: price,
+                total: total || (volume * price),
+                km: km || null,
+                location: currentLocation,
+                photo: currentPhoto
+            };
+            fills.unshift(fill);
+            DB.set('fills', fills);
+
+            // Reset form
+            document.getElementById('volumeInput').value = '';
+            document.getElementById('priceInput').value = '';
+            document.getElementById('totalInput').value = '';
+            document.getElementById('kmInput').value = '';
+            document.getElementById('ocrStatus').style.display = 'none';
+            currentPhoto = null;
+            const area = document.getElementById('photoArea');
+            area.classList.remove('has-image');
+            area.innerHTML = `
+                <div class="photo-placeholder">📷</div>
+                <div class="photo-text">Appuyez pour prendre une photo</div>
+                <input type="file" id="photoInput" class="photo-input" accept="image/*" capture="environment" onchange="handlePhoto(event)">
+            `;
+
+            showToast('Plein enregistré !');
+            renderHistory();
+            renderStats();
+        }
+
+        // ================= HISTORY =================
+        let historyFilter = 'all';
+
+        function renderFilters() {
+            const containers = ['historyFilter', 'statsFilter'];
+            containers.forEach(cid => {
+                const c = document.getElementById(cid);
+                if(!vehicles.length) { c.innerHTML = ''; return; }
+                c.innerHTML = `
+                    <div class="vehicle-chip ${historyFilter==='all'?'active':''}" onclick="setFilter('all')">Tous</div>
+                    ${vehicles.map(v => `
+                        <div class="vehicle-chip ${historyFilter===v.id?'active':''}" onclick="setFilter('${v.id}')">${v.name}</div>
+                    `).join('')}
+                `;
+            });
+        }
+
+        function setFilter(id) {
+            historyFilter = id;
+            renderFilters();
+            renderHistory();
+            renderStats();
+        }
+
+        function renderHistory() {
+            const container = document.getElementById('historyList');
+            let list = fills;
+            if(historyFilter !== 'all') list = list.filter(f => f.vehicleId === historyFilter);
+
+            if(!list.length) {
+                container.innerHTML = `
+                    <div class="empty-state">
+                        <div class="icon">📋</div>
+                        <div>Aucun plein enregistré</div>
+                    </div>`;
+                return;
+            }
+
+            container.innerHTML = list.map(f => {
+                const v = vehicles.find(x => x.id === f.vehicleId);
+                const date = new Date(f.date);
+                return `
+                <div class="fill-item">
+                    ${f.photo ? `<img src="${f.photo}" class="fill-thumb" onclick="showImage('${f.photo}')">` : `<div class="fill-thumb" style="display:flex;align-items:center;justify-content:center;font-size:1.5rem">⛽</div>`}
+                    <div class="fill-info">
+                        <div class="fill-vehicle">${v ? v.name : 'Inconnu'}</div>
+                        <div class="fill-meta">
+                            📅 ${date.toLocaleDateString('fr-FR')} • 🕐 ${date.toLocaleTimeString('fr-FR', {hour:'2-digit', minute:'2-digit'})}
+                            ${f.km ? '• 🛣️ ' + f.km + ' km' : ''}
+                        </div>
+                    </div>
+                    <div class="fill-amount">
+                        <div class="fill-price">${f.total.toFixed(2)}€</div>
+                        <div class="fill-volume">${f.volume.toFixed(1)}L @ ${f.pricePerLiter.toFixed(3)}€</div>
+                    </div>
+                </div>`;
+            }).join('');
+        }
+
+        function showImage(src) {
+            const overlay = document.createElement('div');
+            overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.9);z-index:300;display:flex;align-items:center;justify-content:center;padding:1rem';
+            overlay.innerHTML = `<img src="${src}" style="max-width:100%;max-height:90vh;border-radius:12px" onclick="this.parentElement.remove()">`;
+            overlay.onclick = () => overlay.remove();
+            document.body.appendChild(overlay);
+        }
+
+        // ================= STATS =================
+        function setPeriod(p) {
+            statsPeriod = p;
+            document.querySelectorAll('.period-btn').forEach(b => b.classList.remove('active'));
+            event.target.classList.add('active');
+            renderStats();
+        }
+
+        function renderStats() {
+            const container = document.getElementById('statsContent');
+            let data = fills;
+            if(historyFilter !== 'all') data = data.filter(f => f.vehicleId === historyFilter);
+
+            if(!data.length) {
+                container.innerHTML = `
+                    <div class="empty-state">
+                        <div class="icon">📊</div>
+                        <div>Pas assez de données</div>
+                    </div>`;
+                return;
+            }
+
+            // Totaux
+            const totalVol = data.reduce((s,f) => s + f.volume, 0);
+            const totalCost = data.reduce((s,f) => s + f.total, 0);
+            const avgPrice = data.reduce((s,f) => s + f.pricePerLiter, 0) / data.length;
+            const count = data.length;
+
+            // Regroupement
+            const groups = {};
+            data.forEach(f => {
+                const d = new Date(f.date);
+                const key = statsPeriod === 'month' 
+                    ? `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`
+                    : `${d.getFullYear()}`;
+                if(!groups[key]) groups[key] = { volume: 0, cost: 0, count: 0, prices: [] };
+                groups[key].volume += f.volume;
+                groups[key].cost += f.total;
+                groups[key].count += 1;
+                groups[key].prices.push(f.pricePerLiter);
+            });
+
+            const sortedKeys = Object.keys(groups).sort();
+
+            // HTML
+            let html = `
+            <div class="stats-grid">
+                <div class="stat-box">
+                    <div class="stat-value">${count}</div>
+                    <div class="stat-label">Pleins</div>
+                </div>
+                <div class="stat-box">
+                    <div class="stat-value">${totalVol.toFixed(0)}</div>
+                    <div class="stat-label">Litres totals</div>
+                </div>
+                <div class="stat-box">
+                    <div class="stat-value">${totalCost.toFixed(0)}€</div>
+                    <div class="stat-label">Coût total</div>
+                </div>
+                <div class="stat-box">
+                    <div class="stat-value">${avgPrice.toFixed(3)}€</div>
+                    <div class="stat-label">Prix moyen/L</div>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-title">📈 Évolution des dépenses</div>
+                <div class="chart-container">
+                    <canvas id="costChart"></canvas>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-title">⛽ Volume par période</div>
+                <div class="chart-container">
+                    <canvas id="volChart"></canvas>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-title">📋 Détail par période</div>
+            `;
+
+            sortedKeys.reverse().forEach(key => {
+                const g = groups[key];
+                const avgP = g.prices.reduce((a,b)=>a+b,0)/g.prices.length;
+                const label = statsPeriod === 'month' 
+                    ? new Date(key+'-01').toLocaleDateString('fr-FR', {month:'long', year:'numeric'})
+                    : key;
+                html += `
+                <div class="info-row">
+                    <span class="info-label">${label}</span>
+                    <span class="info-value">${g.cost.toFixed(0)}€ • ${g.volume.toFixed(0)}L • ${g.count} pleins</span>
+                </div>`;
+            });
+            html += '</div>';
+
+            // Export
+            html += `
+            <div style="display:flex;gap:0.75rem;margin-top:1rem">
+                <button class="btn btn-secondary" onclick="exportCSV()">📥 Export CSV</button>
+                <button class="btn btn-secondary" onclick="exportJSON()">📥 Export JSON</button>
+            </div>`;
+
+            container.innerHTML = html;
+
+            // Draw charts
+            setTimeout(() => {
+                drawBarChart('costChart', sortedKeys, sortedKeys.map(k => groups[k].cost), 'Dépenses (€)', '#0f766e');
+                drawBarChart('volChart', sortedKeys, sortedKeys.map(k => groups[k].volume), 'Volume (L)', '#14b8a6');
+            }, 50);
+        }
+
+        function drawBarChart(canvasId, labels, values, label, color) {
+            const canvas = document.getElementById(canvasId);
+            if(!canvas) return;
+            const ctx = canvas.getContext('2d');
+            const dpr = window.devicePixelRatio || 1;
+            const rect = canvas.parentElement.getBoundingClientRect();
+            canvas.width = rect.width * dpr;
+            canvas.height = rect.height * dpr;
+            ctx.scale(dpr, dpr);
+            const w = rect.width, h = rect.height;
+
+            ctx.clearRect(0, 0, w, h);
+            if(!values.length) return;
+
+            const max = Math.max(...values) * 1.1;
+            const pad = { top: 30, right: 10, bottom: 40, left: 50 };
+            const cw = w - pad.left - pad.right;
+            const ch = h - pad.top - pad.bottom;
+            const barW = Math.max(20, (cw / values.length) * 0.6);
+            const gap = (cw - barW * values.length) / (values.length + 1);
+
+            // Grid
+            ctx.strokeStyle = getComputedStyle(document.documentElement).getPropertyValue('--border').trim();
+            ctx.lineWidth = 1;
+            for(let i=0; i<=4; i++) {
+                const y = pad.top + ch - (ch/4)*i;
+                ctx.beginPath();
+                ctx.moveTo(pad.left, y);
+                ctx.lineTo(w - pad.right, y);
+                ctx.stroke();
+                ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--text-secondary').trim();
+                ctx.font = '11px sans-serif';
+                ctx.textAlign = 'right';
+                ctx.fillText((max/4*i).toFixed(0), pad.left - 8, y + 4);
+            }
+
+            // Bars
+            values.forEach((v, i) => {
+                const x = pad.left + gap + i * (barW + gap);
+                const bh = (v / max) * ch;
+                const y = pad.top + ch - bh;
+
+                // Gradient
+                const grad = ctx.createLinearGradient(0, y, 0, y + bh);
+                grad.addColorStop(0, color);
+                grad.addColorStop(1, color + '80');
+                ctx.fillStyle = grad;
+                ctx.beginPath();
+                ctx.roundRect(x, y, barW, bh, 6);
+                ctx.fill();
+
+                // Value on top
+                ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--text').trim();
+                ctx.font = 'bold 11px sans-serif';
+                ctx.textAlign = 'center';
+                ctx.fillText(v.toFixed(0), x + barW/2, y - 6);
+
+                // Label
+                ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--text-secondary').trim();
+                ctx.font = '10px sans-serif';
+                let lbl = labels[i];
+                if(lbl.includes('-')) {
+                    const [y,m] = lbl.split('-');
+                    lbl = m + '/' + y;
+                }
+                ctx.fillText(lbl, x + barW/2, pad.top + ch + 18);
+            });
+        }
+
+        // ================= EXPORT =================
+        function exportCSV() {
+            let csv = 'Date,Véhicule,Volume(L),Prix/L(€),Total(€),Kilométrage,Latitude,Longitude\n';
+            let data = fills;
+            if(historyFilter !== 'all') data = data.filter(f => f.vehicleId === historyFilter);
+            data.forEach(f => {
+                const v = vehicles.find(x => x.id === f.vehicleId);
+                csv += `${f.date},${v?v.name:''},${f.volume},${f.pricePerLiter},${f.total},${f.km||''},${f.location?f.location.lat:''},${f.location?f.location.lng:''}\n`;
+            });
+            downloadFile(csv, 'fueltrack-export.csv', 'text/csv');
+            showToast('Export CSV téléchargé');
+        }
+
+        function exportJSON() {
+            const data = { vehicles, fills, exportedAt: new Date().toISOString() };
+            downloadFile(JSON.stringify(data, null, 2), 'fueltrack-backup.json', 'application/json');
+            showToast('Export JSON téléchargé');
+        }
+
+        function downloadFile(content, filename, type) {
+            const blob = new Blob([content], { type });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = filename;
+            a.click();
+            URL.revokeObjectURL(url);
+        }
+
+        // ================= UTILS =================
+        function showToast(msg) {
+            const t = document.getElementById('toast');
+            t.textContent = msg;
+            t.classList.add('show');
+            setTimeout(() => t.classList.remove('show'), 3000);
+        }
+
+        function installApp() {
+            if(deferredPrompt) {
+                deferredPrompt.prompt();
+                deferredPrompt.userChoice.then(() => {
+                    deferredPrompt = null;
+                    document.getElementById('installBanner').classList.remove('show');
+                });
+            }
+        }
+
+        // Close modal on overlay click
+        document.getElementById('vehicleModal').addEventListener('click', e => {
+            if(e.target === document.getElementById('vehicleModal')) closeVehicleModal();
+        });
+
+        // Init
+        init();
+    </script>
+</body>
+</html>
