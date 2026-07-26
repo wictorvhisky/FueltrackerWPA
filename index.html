@@ -1,1051 +1,1252 @@
 <!DOCTYPE html>
 <html lang="fr">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <meta name="theme-color" content="#0f766e">
-    <meta name="apple-mobile-web-app-capable" content="yes">
-    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-    <title>FuelTrack - Gestion des pleins</title>
-    <link rel="manifest" href="manifest.json">
-    <link rel="apple-touch-icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 192 192'%3E%3Crect fill='%230f766e' width='192' height='192' rx='24'/%3E%3Ctext x='96' y='130' font-size='110' text-anchor='middle' fill='white'%3E⛽%3C/text%3E%3C/svg%3E">
-    <script src='https://cdn.jsdelivr.net/npm/tesseract.js@4/dist/tesseract.min.js'></script>
-    <style>
-        :root {
-            --primary: #0f766e; --primary-light: #14b8a6; --primary-dark: #115e59;
-            --bg: #f0fdfa; --surface: #ffffff; --text: #134e4a; --text-secondary: #5eead4;
-            --border: #ccfbf1; --danger: #ef4444; --success: #22c55e; --warning: #f59e0b;
-            --shadow: 0 4px 6px -1px rgba(0,0,0,0.1), 0 2px 4px -2px rgba(0,0,0,0.1);
-            --shadow-lg: 0 10px 15px -3px rgba(0,0,0,0.1), 0 4px 6px -4px rgba(0,0,0,0.1);
-        }
-        @media (prefers-color-scheme: dark) {
-            :root {
-                --bg: #042f2e; --surface: #115e59; --text: #f0fdfa; --text-secondary: #5eead4;
-                --border: #134e4a; --shadow: 0 4px 6px -1px rgba(0,0,0,0.3); --shadow-lg: 0 10px 15px -3px rgba(0,0,0,0.4);
-            }
-        }
-        * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            background: var(--bg); color: var(--text); min-height: 100vh;
-            display: flex; flex-direction: column; overflow-x: hidden;
-        }
-        .app-header {
-            background: linear-gradient(135deg, var(--primary), var(--primary-dark));
-            color: white; padding: 1.2rem 1rem 2.5rem; position: relative; box-shadow: var(--shadow-lg);
-        }
-        .app-header h1 { font-size: 1.5rem; font-weight: 700; letter-spacing: -0.5px; }
-        .app-header p { opacity: 0.9; font-size: 0.875rem; margin-top: 0.25rem; }
-        .nav-tabs {
-            display: flex; background: var(--surface); margin: -1.5rem 1rem 0;
-            border-radius: 16px; box-shadow: var(--shadow-lg); position: relative; z-index: 10; overflow: hidden;
-        }
-        .nav-tab {
-            flex: 1; padding: 1rem 0.5rem; text-align: center; font-size: 0.75rem; font-weight: 600;
-            text-transform: uppercase; letter-spacing: 0.5px; cursor: pointer; border: none; background: none;
-            color: var(--text-secondary); transition: all 0.3s; position: relative;
-        }
-        .nav-tab.active { color: var(--primary); }
-        .nav-tab.active::after {
-            content: ''; position: absolute; bottom: 0; left: 20%; right: 20%; height: 3px;
-            background: var(--primary); border-radius: 3px 3px 0 0;
-        }
-        .content { flex: 1; padding: 1.5rem 1rem; max-width: 600px; width: 100%; margin: 0 auto; }
-        .view { display: none; animation: fadeIn 0.3s ease; }
-        .view.active { display: block; }
-        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
-        .card {
-            background: var(--surface); border-radius: 16px; padding: 1.25rem; margin-bottom: 1rem;
-            box-shadow: var(--shadow); border: 1px solid var(--border);
-        }
-        .card-title { font-size: 1rem; font-weight: 700; margin-bottom: 1rem; display: flex; align-items: center; gap: 0.5rem; }
-        .form-group { margin-bottom: 1rem; }
-        .form-label { display: block; font-size: 0.875rem; font-weight: 600; margin-bottom: 0.5rem; color: var(--text); }
-        .form-input, .form-select {
-            width: 100%; padding: 0.875rem 1rem; border: 2px solid var(--border); border-radius: 12px;
-            font-size: 1rem; background: var(--bg); color: var(--text); transition: border-color 0.2s; font-family: inherit;
-        }
-        .form-input:focus, .form-select:focus { outline: none; border-color: var(--primary-light); }
-        .btn {
-            display: inline-flex; align-items: center; justify-content: center; gap: 0.5rem;
-            padding: 0.875rem 1.5rem; border-radius: 12px; font-size: 0.9375rem; font-weight: 600;
-            border: none; cursor: pointer; transition: all 0.2s; width: 100%;
-        }
-        .btn-primary {
-            background: linear-gradient(135deg, var(--primary), var(--primary-dark)); color: white;
-            box-shadow: 0 4px 14px rgba(15, 118, 110, 0.3);
-        }
-        .btn-primary:active { transform: scale(0.98); }
-        .btn-secondary { background: var(--bg); color: var(--text); border: 2px solid var(--border); }
-        .btn-danger { background: var(--danger); color: white; }
-        .btn-success { background: var(--success); color: white; }
-        .btn-sm { padding: 0.5rem 1rem; font-size: 0.875rem; width: auto; }
-        .photo-area {
-            border: 3px dashed var(--border); border-radius: 16px; padding: 2rem; text-align: center;
-            cursor: pointer; transition: all 0.2s; background: var(--bg); position: relative; overflow: hidden;
-        }
-        .photo-area:hover { border-color: var(--primary-light); }
-        .photo-area.has-image { border-style: solid; border-color: var(--primary-light); padding: 0; }
-        .photo-area img { width: 100%; max-height: 300px; object-fit: cover; border-radius: 12px; display: block; }
-        .photo-placeholder { font-size: 3rem; margin-bottom: 0.5rem; }
-        .photo-text { font-size: 0.875rem; color: var(--text-secondary); }
-        .photo-input { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
-        .info-row {
-            display: flex; justify-content: space-between; align-items: center;
-            padding: 0.75rem 0; border-bottom: 1px solid var(--border);
-        }
-        .info-row:last-child { border-bottom: none; }
-        .info-label { font-size: 0.875rem; color: var(--text-secondary); }
-        .info-value { font-weight: 600; font-size: 0.9375rem; }
-        .vehicle-chip, .station-chip {
-            display: inline-flex; align-items: center; gap: 0.5rem; padding: 0.5rem 1rem;
-            background: var(--bg); border-radius: 20px; font-size: 0.875rem; font-weight: 600;
-            margin: 0.25rem; border: 2px solid var(--border); cursor: pointer; transition: all 0.2s; flex-shrink: 0;
-        }
-        .vehicle-chip.active, .station-chip.active { background: var(--primary); color: white; border-color: var(--primary); }
-        .station-chip { max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-        .fill-item {
-            background: var(--surface); border-radius: 16px; padding: 1rem; margin-bottom: 0.75rem;
-            box-shadow: var(--shadow); border: 1px solid var(--border); display: flex; gap: 1rem; align-items: flex-start;
-        }
-        .fill-thumb { width: 60px; height: 60px; border-radius: 12px; object-fit: cover; flex-shrink: 0; background: var(--bg); cursor: pointer; }
-        .fill-info { flex: 1; min-width: 0; }
-        .fill-vehicle { font-weight: 700; font-size: 0.9375rem; }
-        .fill-station { font-size: 0.8rem; color: var(--primary-light); margin-top: 0.15rem; display: flex; align-items: center; gap: 0.3rem; }
-        .fill-station.no-addr { color: var(--text-secondary); font-style: italic; }
-        .fill-meta { font-size: 0.75rem; color: var(--text-secondary); margin-top: 0.25rem; line-height: 1.5; }
-        .fill-amount { text-align: right; }
-        .fill-price { font-weight: 700; font-size: 1.125rem; color: var(--primary); }
-        .fill-volume { font-size: 0.75rem; color: var(--text-secondary); }
-        .stats-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 0.75rem; margin-bottom: 1rem; }
-        .stat-box { background: var(--bg); border-radius: 12px; padding: 1rem; text-align: center; border: 1px solid var(--border); }
-        .stat-value { font-size: 1.5rem; font-weight: 700; color: var(--primary); }
-        .stat-label { font-size: 0.75rem; color: var(--text-secondary); margin-top: 0.25rem; text-transform: uppercase; }
-        .chart-container { position: relative; height: 250px; margin: 1rem 0; }
-        .modal-overlay {
-            position: fixed; inset: 0; background: rgba(0,0,0,0.5); backdrop-filter: blur(4px);
-            z-index: 100; display: none; align-items: center; justify-content: center; padding: 1rem;
-        }
-        .modal-overlay.active { display: flex; }
-        .modal {
-            background: var(--surface); border-radius: 20px; padding: 1.5rem; width: 100%;
-            max-width: 400px; max-height: 90vh; overflow-y: auto; animation: modalIn 0.3s ease;
-        }
-        @keyframes modalIn { from { opacity: 0; transform: scale(0.9); } to { opacity: 1; transform: scale(1); } }
-        .modal-header { font-size: 1.25rem; font-weight: 700; margin-bottom: 1rem; }
-        .modal-actions { display: flex; gap: 0.75rem; margin-top: 1.5rem; }
-        .modal-actions .btn { flex: 1; }
-        .empty-state { text-align: center; padding: 3rem 1rem; color: var(--text-secondary); }
-        .empty-state .icon { font-size: 4rem; margin-bottom: 1rem; opacity: 0.5; }
-        .ocr-status {
-            font-size: 0.75rem; padding: 0.5rem; border-radius: 8px; margin-top: 0.5rem;
-            text-align: center; display: none;
-        }
-        .ocr-status.loading { display: block; background: #dbeafe; color: #1e40af; }
-        .ocr-status.success { display: block; background: #dcfce7; color: #166534; }
-        .ocr-status.error { display: block; background: #fee2e2; color: #991b1b; }
-        .filter-bar {
-            display: flex; gap: 0.5rem; overflow-x: auto; padding-bottom: 0.5rem; margin-bottom: 1rem;
-            -webkit-overflow-scrolling: touch; scrollbar-width: none;
-        }
-        .filter-bar::-webkit-scrollbar { display: none; }
-        .period-selector {
-            display: flex; background: var(--bg); border-radius: 10px; padding: 0.25rem; margin-bottom: 1rem;
-        }
-        .period-btn {
-            flex: 1; padding: 0.5rem; border: none; background: none; border-radius: 8px;
-            font-size: 0.875rem; font-weight: 600; color: var(--text-secondary); cursor: pointer; transition: all 0.2s;
-        }
-        .period-btn.active { background: var(--surface); color: var(--primary); box-shadow: var(--shadow); }
-        .toast {
-            position: fixed; bottom: 2rem; left: 50%; transform: translateX(-50%) translateY(100px);
-            background: var(--text); color: var(--bg); padding: 0.875rem 1.5rem; border-radius: 12px;
-            font-weight: 600; font-size: 0.875rem; box-shadow: var(--shadow-lg); z-index: 200;
-            transition: transform 0.3s ease; white-space: nowrap;
-        }
-        .toast.show { transform: translateX(-50%) translateY(0); }
-        .install-banner {
-            background: linear-gradient(135deg, var(--primary), var(--primary-dark)); color: white;
-            padding: 1rem; border-radius: 16px; margin-bottom: 1rem; display: none;
-            align-items: center; justify-content: space-between; gap: 1rem;
-        }
-        .install-banner.show { display: flex; }
-        .loc-status {
-            font-size: 0.75rem; padding: 0.4rem 0.75rem; border-radius: 8px; margin-top: 0.5rem; display: none;
-        }
-        .loc-status.loading { display: inline-block; background: #dbeafe; color: #1e40af; }
-        .loc-status.success { display: inline-block; background: #dcfce7; color: #166534; }
-        .loc-status.error { display: inline-block; background: #fee2e2; color: #991b1b; }
-        .station-row {
-            display: flex; justify-content: space-between; align-items: center;
-            padding: 0.85rem 0; border-bottom: 1px solid var(--border);
-        }
-        .station-row:last-child { border-bottom: none; }
-        .station-name { font-weight: 600; font-size: 0.9rem; }
-        .station-details { font-size: 0.75rem; color: var(--text-secondary); margin-top: 0.15rem; }
-        .station-total { font-weight: 700; color: var(--primary); font-size: 1rem; }
-        @media (min-width: 640px) { .content { padding: 2rem; } .stats-grid { grid-template-columns: repeat(4, 1fr); } }
-    </style>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="theme-color" content="#0f766e">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>FuelTrack - Gestion des pleins</title>
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 192 192'%3E%3Crect fill='%230f766e' width='192' height='192' rx='24'/%3E%3Ctext x='96' y='130' font-size='110' text-anchor='middle' fill='white'%3E⛽%3C/text%3E%3C/svg%3E">
+<script src='https://cdn.jsdelivr.net/npm/tesseract.js@4/dist/tesseract.min.js'></script>
+<style>
+:root {
+  --primary:#0f766e; --primary-light:#14b8a6; --primary-dark:#115e59;
+  --bg:#f0fdfa; --surface:#ffffff; --text:#134e4a; --text-secondary:#5eead4;
+  --border:#ccfbf1; --danger:#ef4444; --success:#22c55e; --warning:#f59e0b;
+  --shadow:0 4px 6px -1px rgba(0,0,0,0.1),0 2px 4px -2px rgba(0,0,0,0.1);
+  --shadow-lg:0 10px 15px -3px rgba(0,0,0,0.1),0 4px 6px -4px rgba(0,0,0,0.1);
+}
+@media (prefers-color-scheme: dark) {
+  :root { --bg:#042f2e; --surface:#115e59; --text:#f0fdfa; --text-secondary:#5eead4;
+    --border:#134e4a; --shadow:0 4px 6px -1px rgba(0,0,0,0.3); --shadow-lg:0 10px 15px -3px rgba(0,0,0,0.4); }
+}
+* { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+body { font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif; background:var(--bg); color:var(--text); min-height:100vh; display:flex; flex-direction:column; overflow-x:hidden; }
+.app-header { background:linear-gradient(135deg,var(--primary),var(--primary-dark)); color:white; padding:1.2rem 1rem 2.5rem; position:relative; box-shadow:var(--shadow-lg); }
+.app-header h1 { font-size:1.5rem; font-weight:700; letter-spacing:-0.5px; }
+.app-header p { opacity:0.9; font-size:0.875rem; margin-top:0.25rem; }
+.app-header .account-badge { position:absolute; top:1.2rem; right:1rem; background:rgba(255,255,255,0.2); padding:0.35rem 0.75rem; border-radius:20px; font-size:0.75rem; font-weight:600; backdrop-filter:blur(4px); }
+.nav-tabs { display:flex; background:var(--surface); margin:-1.5rem 1rem 0; border-radius:16px; box-shadow:var(--shadow-lg); position:relative; z-index:10; overflow:hidden; }
+.nav-tab { flex:1; padding:1rem 0.4rem; text-align:center; font-size:0.7rem; font-weight:600; text-transform:uppercase; letter-spacing:0.5px; cursor:pointer; border:none; background:none; color:var(--text-secondary); transition:all 0.3s; position:relative; }
+.nav-tab.active { color:var(--primary); }
+.nav-tab.active::after { content:''; position:absolute; bottom:0; left:15%; right:15%; height:3px; background:var(--primary); border-radius:3px 3px 0 0; }
+.content { flex:1; padding:1.5rem 1rem; max-width:600px; width:100%; margin:0 auto; }
+.view { display:none; animation:fadeIn 0.3s ease; }
+.view.active { display:block; }
+@keyframes fadeIn { from{opacity:0;transform:translateY(10px)} to{opacity:1;transform:translateY(0)} }
+.card { background:var(--surface); border-radius:16px; padding:1.25rem; margin-bottom:1rem; box-shadow:var(--shadow); border:1px solid var(--border); }
+.card-title { font-size:1rem; font-weight:700; margin-bottom:1rem; display:flex; align-items:center; gap:0.5rem; }
+.form-group { margin-bottom:1rem; }
+.form-label { display:block; font-size:0.875rem; font-weight:600; margin-bottom:0.5rem; color:var(--text); }
+.form-input,.form-select { width:100%; padding:0.875rem 1rem; border:2px solid var(--border); border-radius:12px; font-size:1rem; background:var(--bg); color:var(--text); transition:border-color 0.2s; font-family:inherit; }
+.form-input:focus,.form-select:focus { outline:none; border-color:var(--primary-light); }
+.btn { display:inline-flex; align-items:center; justify-content:center; gap:0.5rem; padding:0.875rem 1.5rem; border-radius:12px; font-size:0.9375rem; font-weight:600; border:none; cursor:pointer; transition:all 0.2s; width:100%; }
+.btn-primary { background:linear-gradient(135deg,var(--primary),var(--primary-dark)); color:white; box-shadow:0 4px 14px rgba(15,118,110,0.3); }
+.btn-primary:active { transform:scale(0.98); }
+.btn-secondary { background:var(--bg); color:var(--text); border:2px solid var(--border); }
+.btn-danger { background:var(--danger); color:white; }
+.btn-success { background:var(--success); color:white; }
+.btn-sm { padding:0.5rem 1rem; font-size:0.875rem; width:auto; }
+.photo-area { border:3px dashed var(--border); border-radius:16px; padding:2rem; text-align:center; cursor:pointer; transition:all 0.2s; background:var(--bg); position:relative; overflow:hidden; }
+.photo-area:hover { border-color:var(--primary-light); }
+.photo-area.has-image { border-style:solid; border-color:var(--primary-light); padding:0; }
+.photo-area img { width:100%; max-height:300px; object-fit:cover; border-radius:12px; display:block; }
+.photo-placeholder { font-size:3rem; margin-bottom:0.5rem; }
+.photo-text { font-size:0.875rem; color:var(--text-secondary); }
+.photo-input { position:absolute; inset:0; opacity:0; cursor:pointer; }
+.info-row { display:flex; justify-content:space-between; align-items:center; padding:0.75rem 0; border-bottom:1px solid var(--border); }
+.info-row:last-child { border-bottom:none; }
+.info-label { font-size:0.875rem; color:var(--text-secondary); }
+.info-value { font-weight:600; font-size:0.9375rem; }
+.vehicle-chip,.station-chip { display:inline-flex; align-items:center; gap:0.5rem; padding:0.5rem 1rem; background:var(--bg); border-radius:20px; font-size:0.875rem; font-weight:600; margin:0.25rem; border:2px solid var(--border); cursor:pointer; transition:all 0.2s; flex-shrink:0; }
+.vehicle-chip.active,.station-chip.active { background:var(--primary); color:white; border-color:var(--primary); }
+.station-chip { max-width:200px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.fill-item { background:var(--surface); border-radius:16px; padding:1rem; margin-bottom:0.75rem; box-shadow:var(--shadow); border:1px solid var(--border); display:flex; gap:1rem; align-items:flex-start; }
+.fill-thumb { width:60px; height:60px; border-radius:12px; object-fit:cover; flex-shrink:0; background:var(--bg); cursor:pointer; }
+.fill-info { flex:1; min-width:0; }
+.fill-vehicle { font-weight:700; font-size:0.9375rem; }
+.fill-station { font-size:0.8rem; color:var(--primary-light); margin-top:0.15rem; display:flex; align-items:center; gap:0.3rem; }
+.fill-station.no-addr { color:var(--text-secondary); font-style:italic; }
+.fill-meta { font-size:0.75rem; color:var(--text-secondary); margin-top:0.25rem; line-height:1.5; }
+.fill-amount { text-align:right; }
+.fill-price { font-weight:700; font-size:1.125rem; color:var(--primary); }
+.fill-volume { font-size:0.75rem; color:var(--text-secondary); }
+.stats-grid { display:grid; grid-template-columns:repeat(2,1fr); gap:0.75rem; margin-bottom:1rem; }
+.stat-box { background:var(--bg); border-radius:12px; padding:1rem; text-align:center; border:1px solid var(--border); }
+.stat-value { font-size:1.5rem; font-weight:700; color:var(--primary); }
+.stat-label { font-size:0.75rem; color:var(--text-secondary); margin-top:0.25rem; text-transform:uppercase; }
+.chart-container { position:relative; height:250px; margin:1rem 0; }
+.modal-overlay { position:fixed; inset:0; background:rgba(0,0,0,0.5); backdrop-filter:blur(4px); z-index:100; display:none; align-items:center; justify-content:center; padding:1rem; }
+.modal-overlay.active { display:flex; }
+.modal { background:var(--surface); border-radius:20px; padding:1.5rem; width:100%; max-width:400px; max-height:90vh; overflow-y:auto; animation:modalIn 0.3s ease; }
+@keyframes modalIn { from{opacity:0;transform:scale(0.9)} to{opacity:1;transform:scale(1)} }
+.modal-header { font-size:1.25rem; font-weight:700; margin-bottom:1rem; }
+.modal-actions { display:flex; gap:0.75rem; margin-top:1.5rem; }
+.modal-actions .btn { flex:1; }
+.empty-state { text-align:center; padding:3rem 1rem; color:var(--text-secondary); }
+.empty-state .icon { font-size:4rem; margin-bottom:1rem; opacity:0.5; }
+.ocr-status { font-size:0.75rem; padding:0.5rem; border-radius:8px; margin-top:0.5rem; text-align:center; display:none; }
+.ocr-status.loading { display:block; background:#dbeafe; color:#1e40af; }
+.ocr-status.success { display:block; background:#dcfce7; color:#166534; }
+.ocr-status.error { display:block; background:#fee2e2; color:#991b1b; }
+.filter-bar { display:flex; gap:0.5rem; overflow-x:auto; padding-bottom:0.5rem; margin-bottom:1rem; -webkit-overflow-scrolling:touch; scrollbar-width:none; }
+.filter-bar::-webkit-scrollbar { display:none; }
+.period-selector { display:flex; background:var(--bg); border-radius:10px; padding:0.25rem; margin-bottom:1rem; }
+.period-btn { flex:1; padding:0.5rem; border:none; background:none; border-radius:8px; font-size:0.875rem; font-weight:600; color:var(--text-secondary); cursor:pointer; transition:all 0.2s; }
+.period-btn.active { background:var(--surface); color:var(--primary); box-shadow:var(--shadow); }
+.toast { position:fixed; bottom:2rem; left:50%; transform:translateX(-50%) translateY(100px); background:var(--text); color:var(--bg); padding:0.875rem 1.5rem; border-radius:12px; font-weight:600; font-size:0.875rem; box-shadow:var(--shadow-lg); z-index:200; transition:transform 0.3s ease; white-space:nowrap; }
+.toast.show { transform:translateX(-50%) translateY(0); }
+.install-banner { background:linear-gradient(135deg,var(--primary),var(--primary-dark)); color:white; padding:1rem; border-radius:16px; margin-bottom:1rem; display:none; align-items:center; justify-content:space-between; gap:1rem; }
+.install-banner.show { display:flex; }
+.loc-status { font-size:0.75rem; padding:0.4rem 0.75rem; border-radius:8px; margin-top:0.5rem; display:none; }
+.loc-status.loading { display:inline-block; background:#dbeafe; color:#1e40af; }
+.loc-status.success { display:inline-block; background:#dcfce7; color:#166534; }
+.loc-status.error { display:inline-block; background:#fee2e2; color:#991b1b; }
+.station-row { display:flex; justify-content:space-between; align-items:center; padding:0.85rem 0; border-bottom:1px solid var(--border); }
+.station-row:last-child { border-bottom:none; }
+.station-name { font-weight:600; font-size:0.9rem; }
+.station-details { font-size:0.75rem; color:var(--text-secondary); margin-top:0.15rem; }
+.station-total { font-weight:700; color:var(--primary); font-size:1rem; }
+
+/* Account screen */
+.account-screen { position:fixed; inset:0; background:var(--bg); z-index:500; display:none; flex-direction:column; }
+.account-screen.active { display:flex; }
+.account-screen-header { background:linear-gradient(135deg,var(--primary),var(--primary-dark)); color:white; padding:2rem 1.5rem 3rem; text-align:center; }
+.account-screen-header h1 { font-size:1.75rem; font-weight:700; }
+.account-screen-header p { opacity:0.9; margin-top:0.5rem; }
+.account-list { flex:1; padding:1.5rem 1rem; max-width:400px; width:100%; margin:0 auto; overflow-y:auto; }
+.account-card { background:var(--surface); border-radius:16px; padding:1.25rem; margin-bottom:0.75rem; box-shadow:var(--shadow); border:2px solid var(--border); cursor:pointer; transition:all 0.2s; display:flex; align-items:center; gap:1rem; }
+.account-card:hover { border-color:var(--primary-light); transform:translateY(-2px); }
+.account-card .avatar { width:48px; height:48px; border-radius:50%; background:linear-gradient(135deg,var(--primary),var(--primary-light)); color:white; display:flex; align-items:center; justify-content:center; font-size:1.5rem; font-weight:700; flex-shrink:0; }
+.account-card .info { flex:1; }
+.account-card .name { font-weight:700; font-size:1rem; }
+.account-card .meta { font-size:0.75rem; color:var(--text-secondary); margin-top:0.25rem; }
+.account-card .actions { display:flex; gap:0.4rem; }
+.account-card .btn-sm { padding:0.4rem 0.7rem; font-size:0.75rem; }
+.add-account-btn { background:var(--surface); border:2px dashed var(--border); border-radius:16px; padding:1.25rem; text-align:center; cursor:pointer; transition:all 0.2s; color:var(--text-secondary); font-weight:600; }
+.add-account-btn:hover { border-color:var(--primary); color:var(--primary); }
+
+@media (min-width:640px) { .content { padding:2rem; } .stats-grid { grid-template-columns:repeat(4,1fr); } }
+</style>
 </head>
 <body>
-    <div class="app-header">
-        <h1>⛽ FuelTrack</h1>
-        <p>Suivez vos pleins de carburant</p>
+
+<!-- ACCOUNT SCREEN -->
+<div class="account-screen active" id="accountScreen">
+  <div class="account-screen-header">
+    <h1>⛽ FuelTrack</h1>
+    <p>Choisissez un compte pour continuer</p>
+  </div>
+  <div class="account-list" id="accountList"></div>
+</div>
+
+<!-- MAIN APP -->
+<div id="mainApp" style="display:none;flex-direction:column;min-height:100vh">
+  <div class="app-header">
+    <div class="account-badge" id="accountBadge" onclick="logout()" style="cursor:pointer">👤 </div>
+    <h1>⛽ FuelTrack</h1>
+    <p>Suivez vos pleins de carburant</p>
+  </div>
+  <div class="nav-tabs">
+    <button class="nav-tab active" onclick="showView('add')">📝 Nouveau</button>
+    <button class="nav-tab" onclick="showView('history')">📋 Historique</button>
+    <button class="nav-tab" onclick="showView('stats')">📊 Stats</button>
+    <button class="nav-tab" onclick="showView('vehicles')">🚗 Véhicules</button>
+    <button class="nav-tab" onclick="showView('accounts')">👤 Comptes</button>
+  </div>
+  <div class="content">
+    <div class="install-banner" id="installBanner">
+      <div><div style="font-weight:700">Installer l'application</div><div style="font-size:0.875rem;opacity:0.9">Accès rapide depuis l'écran d'accueil</div></div>
+      <button class="btn btn-sm" style="background:white;color:var(--primary);white-space:nowrap" onclick="installApp()">Installer</button>
     </div>
-    <div class="nav-tabs">
-        <button class="nav-tab active" onclick="showView('add')">📝 Nouveau</button>
-        <button class="nav-tab" onclick="showView('history')">📋 Historique</button>
-        <button class="nav-tab" onclick="showView('stats')">📊 Stats</button>
-        <button class="nav-tab" onclick="showView('vehicles')">🚗 Véhicules</button>
+
+    <div class="view active" id="view-add">
+      <div class="card">
+        <div class="card-title">📸 Photo du compteur</div>
+        <div class="photo-area" id="photoArea" onclick="document.getElementById('photoInput').click()">
+          <div class="photo-placeholder">📷</div>
+          <div class="photo-text">Appuyez pour prendre une photo</div>
+          <input type="file" id="photoInput" class="photo-input" accept="image/*" capture="environment" onchange="handlePhoto(event)">
+        </div>
+        <div class="ocr-status" id="ocrStatus"></div>
+      </div>
+      <div class="card">
+        <div class="card-title">🚗 Véhicule</div>
+        <div id="vehicleSelector" class="filter-bar"></div>
+        <button class="btn btn-secondary btn-sm" onclick="openVehicleModal()" style="width:auto">+ Ajouter un véhicule</button>
+      </div>
+      <div class="card">
+        <div class="card-title">📍 Informations automatiques</div>
+        <div class="info-row"><span class="info-label">📅 Date & Heure</span><span class="info-value" id="autoDate">-</span></div>
+        <div class="info-row"><span class="info-label">📍 Localisation</span><span class="info-value" id="autoLocation">-</span></div>
+        <div id="addressDisplay" class="fill-station" style="display:none;margin-top:0.25rem"></div>
+        <div style="margin-top:0.5rem">
+          <button class="btn btn-secondary btn-sm" onclick="refreshLocation()" style="width:auto">🔄 Actualiser la position</button>
+          <span class="loc-status" id="locStatus"></span>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-title">⛽ Détails du plein</div>
+        <div class="form-group"><label class="form-label">Volume (litres)</label><input type="number" id="volumeInput" class="form-input" step="0.01" placeholder="Ex: 45.32"></div>
+        <div class="form-group"><label class="form-label">Prix au litre (€)</label><input type="number" id="priceInput" class="form-input" step="0.001" placeholder="Ex: 1.789"></div>
+        <div class="form-group"><label class="form-label">Prix total (€) <span style="font-weight:400;color:var(--text-secondary)">- auto</span></label><input type="number" id="totalInput" class="form-input" step="0.01" placeholder="Calculé automatiquement"></div>
+        <div class="form-group"><label class="form-label">Kilométrage (km)</label><input type="number" id="kmInput" class="form-input" step="1" placeholder="Kilométrage au compteur"></div>
+      </div>
+      <button class="btn btn-primary" onclick="saveFill()" id="saveBtn">💾 Enregistrer le plein</button>
     </div>
-    <div class="content">
-        <div class="install-banner" id="installBanner">
-            <div>
-                <div style="font-weight:700">Installer l'application</div>
-                <div style="font-size:0.875rem;opacity:0.9">Accès rapide depuis l'écran d'accueil</div>
-            </div>
-            <button class="btn btn-sm" style="background:white;color:var(--primary);white-space:nowrap" onclick="installApp()">Installer</button>
-        </div>
-        <div class="view active" id="view-add">
-            <div class="card">
-                <div class="card-title">📸 Photo du compteur</div>
-                <div class="photo-area" id="photoArea" onclick="document.getElementById('photoInput').click()">
-                    <div class="photo-placeholder">📷</div>
-                    <div class="photo-text">Appuyez pour prendre une photo</div>
-                    <input type="file" id="photoInput" class="photo-input" accept="image/*" capture="environment" onchange="handlePhoto(event)">
-                </div>
-                <div class="ocr-status" id="ocrStatus"></div>
-            </div>
-            <div class="card">
-                <div class="card-title">🚗 Véhicule</div>
-                <div id="vehicleSelector" class="filter-bar"></div>
-                <button class="btn btn-secondary btn-sm" onclick="openVehicleModal()" style="width:auto">+ Ajouter un véhicule</button>
-            </div>
-            <div class="card">
-                <div class="card-title">📍 Informations automatiques</div>
-                <div class="info-row">
-                    <span class="info-label">📅 Date & Heure</span>
-                    <span class="info-value" id="autoDate">-</span>
-                </div>
-                <div class="info-row">
-                    <span class="info-label">📍 Localisation</span>
-                    <span class="info-value" id="autoLocation">-</span>
-                </div>
-                <div id="addressDisplay" class="fill-station" style="display:none;margin-top:0.25rem"></div>
-                <div style="margin-top:0.5rem">
-                    <button class="btn btn-secondary btn-sm" onclick="refreshLocation()" style="width:auto">🔄 Actualiser la position</button>
-                    <span class="loc-status" id="locStatus"></span>
-                </div>
-            </div>
-            <div class="card">
-                <div class="card-title">⛽ Détails du plein</div>
-                <div class="form-group">
-                    <label class="form-label">Volume (litres)</label>
-                    <input type="number" id="volumeInput" class="form-input" step="0.01" placeholder="Ex: 45.32">
-                </div>
-                <div class="form-group">
-                    <label class="form-label">Prix au litre (€)</label>
-                    <input type="number" id="priceInput" class="form-input" step="0.001" placeholder="Ex: 1.789">
-                </div>
-                <div class="form-group">
-                    <label class="form-label">Prix total (€) <span style="font-weight:400;color:var(--text-secondary)">- auto</span></label>
-                    <input type="number" id="totalInput" class="form-input" step="0.01" placeholder="Calculé automatiquement">
-                </div>
-                <div class="form-group">
-                    <label class="form-label">Kilométrage (km)</label>
-                    <input type="number" id="kmInput" class="form-input" step="1" placeholder="Kilométrage au compteur">
-                </div>
-            </div>
-            <button class="btn btn-primary" onclick="saveFill()" id="saveBtn">💾 Enregistrer le plein</button>
-        </div>
-        <div class="view" id="view-history">
-            <div style="font-size:0.8rem;font-weight:600;color:var(--text-secondary);margin-bottom:0.5rem">🚗 Véhicule</div>
-            <div class="filter-bar" id="historyFilter"></div>
-            <div style="font-size:0.8rem;font-weight:600;color:var(--text-secondary);margin-bottom:0.5rem;margin-top:0.5rem">⛽ Station</div>
-            <div class="filter-bar" id="stationFilter"></div>
-            <div id="historyList"></div>
-        </div>
-        <div class="view" id="view-stats">
-            <div class="filter-bar" id="statsFilter"></div>
-            <div class="period-selector">
-                <button class="period-btn active" onclick="setPeriod('month')">Mensuel</button>
-                <button class="period-btn" onclick="setPeriod('year')">Annuel</button>
-            </div>
-            <div id="statsContent"></div>
-        </div>
-        <div class="view" id="view-vehicles">
-            <div id="vehiclesList"></div>
-            <button class="btn btn-primary" onclick="openVehicleModal()">+ Ajouter un véhicule</button>
-        </div>
+
+    <div class="view" id="view-history">
+      <div style="font-size:0.8rem;font-weight:600;color:var(--text-secondary);margin-bottom:0.5rem">🚗 Véhicule</div>
+      <div class="filter-bar" id="historyFilter"></div>
+      <div style="font-size:0.8rem;font-weight:600;color:var(--text-secondary);margin-bottom:0.5rem;margin-top:0.5rem">⛽ Station</div>
+      <div class="filter-bar" id="stationFilter"></div>
+      <div id="historyList"></div>
     </div>
-    <div class="modal-overlay" id="vehicleModal">
-        <div class="modal">
-            <div class="modal-header">🚗 Véhicule</div>
-            <div class="form-group">
-                <label class="form-label">Nom du véhicule</label>
-                <input type="text" id="vehicleName" class="form-input" placeholder="Ex: Peugeot 208">
-            </div>
-            <div class="form-group">
-                <label class="form-label">Immatriculation</label>
-                <input type="text" id="vehiclePlate" class="form-input" placeholder="Ex: AB-123-CD">
-            </div>
-            <div class="form-group">
-                <label class="form-label">Type de carburant</label>
-                <select id="vehicleFuel" class="form-select">
-                    <option value="SP95">SP95</option>
-                    <option value="SP98">SP98</option>
-                    <option value="E10">E10</option>
-                    <option value="Diesel">Diesel</option>
-                    <option value="GPL">GPL</option>
-                    <option value="Électrique">Électrique</option>
-                </select>
-            </div>
-            <div class="modal-actions">
-                <button class="btn btn-secondary" onclick="closeVehicleModal()">Annuler</button>
-                <button class="btn btn-primary" onclick="saveVehicle()">Enregistrer</button>
-            </div>
-        </div>
+
+    <div class="view" id="view-stats">
+      <div class="filter-bar" id="statsFilter"></div>
+      <div class="period-selector">
+        <button class="period-btn active" onclick="setPeriod('month')">Mensuel</button>
+        <button class="period-btn" onclick="setPeriod('year')">Annuel</button>
+      </div>
+      <div id="statsContent"></div>
     </div>
-    <div class="modal-overlay" id="fillModal">
-        <div class="modal">
-            <div class="modal-header">✏️ Modifier le plein</div>
-            <div class="form-group">
-                <label class="form-label">Véhicule</label>
-                <select id="editFillVehicle" class="form-select"></select>
-            </div>
-            <div class="form-group">
-                <label class="form-label">Date & Heure</label>
-                <input type="datetime-local" id="editFillDate" class="form-input">
-            </div>
-            <div class="form-group">
-                <label class="form-label">Volume (litres)</label>
-                <input type="number" id="editFillVolume" class="form-input" step="0.01">
-            </div>
-            <div class="form-group">
-                <label class="form-label">Prix au litre (€)</label>
-                <input type="number" id="editFillPrice" class="form-input" step="0.001">
-            </div>
-            <div class="form-group">
-                <label class="form-label">Prix total (€)</label>
-                <input type="number" id="editFillTotal" class="form-input" step="0.01">
-            </div>
-            <div class="form-group">
-                <label class="form-label">Kilométrage (km)</label>
-                <input type="number" id="editFillKm" class="form-input" step="1">
-            </div>
-            <div class="modal-actions">
-                <button class="btn btn-secondary" onclick="closeFillModal()">Annuler</button>
-                <button class="btn btn-primary" onclick="updateFill()">Enregistrer</button>
-            </div>
-        </div>
+
+    <div class="view" id="view-vehicles">
+      <div id="vehiclesList"></div>
+      <button class="btn btn-primary" onclick="openVehicleModal()">+ Ajouter un véhicule</button>
     </div>
-    <div class="toast" id="toast"></div>
-    <script>
 
-        const DB = {
-            get(key, def) { try { return JSON.parse(localStorage.getItem(key)) || def; } catch { return def; } },
-            set(key, val) { localStorage.setItem(key, JSON.stringify(val)); }
-        };
-        let vehicles = DB.get('vehicles', []);
-        let fills = DB.get('fills', []);
-        let selectedVehicle = null;
-        let selectedStation = 'all';
-        let currentPhoto = null;
-        let currentLocation = null;
-        let currentAddress = null;
-        let editingVehicleId = null;
-        let editingFillId = null;
-        let statsPeriod = 'month';
-        let deferredPrompt = null;
+    <div class="view" id="view-accounts">
+      <div class="card">
+        <div class="card-title">👤 Compte actuel</div>
+        <div id="currentAccountCard"></div>
+        <button class="btn btn-secondary" onclick="logout()" style="margin-top:1rem">🚪 Se déconnecter</button>
+      </div>
+      <div class="card">
+        <div class="card-title">👥 Tous les comptes</div>
+        <div id="accountsManagementList"></div>
+      </div>
+    </div>
+  </div>
 
-        function init() {
-            updateDateTime();
-            setInterval(updateDateTime, 1000);
-            refreshLocation();
-            renderVehicleSelector();
-            renderHistory();
-            renderStats();
-            renderVehicles();
-            renderFilters();
-            renderStationFilter();
-            ['volumeInput','priceInput'].forEach(id => {
-                document.getElementById(id).addEventListener('input', calcTotal);
-            });
-            document.getElementById('totalInput').addEventListener('input', function() {
-                const v = parseFloat(document.getElementById('volumeInput').value);
-                const t = parseFloat(this.value);
-                if(v && t) document.getElementById('priceInput').value = (t/v).toFixed(3);
-            });
-            ['editFillVolume','editFillPrice'].forEach(id => {
-                document.getElementById(id).addEventListener('input', calcEditTotal);
-            });
-            document.getElementById('editFillTotal').addEventListener('input', function() {
-                const v = parseFloat(document.getElementById('editFillVolume').value);
-                const t = parseFloat(this.value);
-                if(v && t) document.getElementById('editFillPrice').value = (t/v).toFixed(3);
-            });
-            window.addEventListener('beforeinstallprompt', (e) => {
-                e.preventDefault();
-                deferredPrompt = e;
-                document.getElementById('installBanner').classList.add('show');
-            });
+  <div class="modal-overlay" id="vehicleModal">
+    <div class="modal">
+      <div class="modal-header">🚗 Véhicule</div>
+      <div class="form-group"><label class="form-label">Nom du véhicule</label><input type="text" id="vehicleName" class="form-input" placeholder="Ex: Peugeot 208"></div>
+      <div class="form-group"><label class="form-label">Immatriculation</label><input type="text" id="vehiclePlate" class="form-input" placeholder="Ex: AB-123-CD"></div>
+      <div class="form-group"><label class="form-label">Type de carburant</label>
+        <select id="vehicleFuel" class="form-select">
+          <option value="SP95">SP95</option><option value="SP98">SP98</option><option value="E10">E10</option>
+          <option value="Diesel">Diesel</option><option value="GPL">GPL</option><option value="Électrique">Électrique</option>
+        </select>
+      </div>
+      <div class="modal-actions">
+        <button class="btn btn-secondary" onclick="closeVehicleModal()">Annuler</button>
+        <button class="btn btn-primary" onclick="saveVehicle()">Enregistrer</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal-overlay" id="fillModal">
+    <div class="modal">
+      <div class="modal-header">✏️ Modifier le plein</div>
+      <div class="form-group"><label class="form-label">Véhicule</label><select id="editFillVehicle" class="form-select"></select></div>
+      <div class="form-group"><label class="form-label">Date & Heure</label><input type="datetime-local" id="editFillDate" class="form-input"></div>
+      <div class="form-group"><label class="form-label">Volume (litres)</label><input type="number" id="editFillVolume" class="form-input" step="0.01"></div>
+      <div class="form-group"><label class="form-label">Prix au litre (€)</label><input type="number" id="editFillPrice" class="form-input" step="0.001"></div>
+      <div class="form-group"><label class="form-label">Prix total (€)</label><input type="number" id="editFillTotal" class="form-input" step="0.01"></div>
+      <div class="form-group"><label class="form-label">Kilométrage (km)</label><input type="number" id="editFillKm" class="form-input" step="1"></div>
+      <div class="modal-actions">
+        <button class="btn btn-secondary" onclick="closeFillModal()">Annuler</button>
+        <button class="btn btn-primary" onclick="updateFill()">Enregistrer</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal-overlay" id="accountModal">
+    <div class="modal">
+      <div class="modal-header" id="accountModalTitle">👤 Nouveau compte</div>
+      <div class="form-group"><label class="form-label">Nom du compte</label><input type="text" id="accountName" class="form-input" placeholder="Ex: Jean, Famille, Pro..."></div>
+      <div class="modal-actions">
+        <button class="btn btn-secondary" onclick="closeAccountModal()">Annuler</button>
+        <button class="btn btn-primary" onclick="saveAccount()">Enregistrer</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="toast" id="toast"></div>
+</div>
+
+<script>
+
+const DB = {
+  get(key, def) { try { return JSON.parse(localStorage.getItem(key)) || def; } catch { return def; } },
+  set(key, val) { localStorage.setItem(key, JSON.stringify(val)); }
+};
+
+let accounts = DB.get('ft_accounts', []);
+let currentAccountId = DB.get('ft_current_account', null);
+let vehicles = [];
+let fills = [];
+let selectedVehicle = null;
+let selectedStation = 'all';
+let currentPhoto = null;
+let currentLocation = null;
+let currentAddress = null;
+let editingVehicleId = null;
+let editingFillId = null;
+let editingAccountId = null;
+let statsPeriod = 'month';
+let deferredPrompt = null;
+
+function loadAccountData() {
+  if (!currentAccountId) return;
+  const data = DB.get('ft_data_' + currentAccountId, { vehicles: [], fills: [] });
+  vehicles = data.vehicles || [];
+  fills = data.fills || [];
+}
+
+function saveAccountData() {
+  if (!currentAccountId) return;
+  DB.set('ft_data_' + currentAccountId, { vehicles, fills });
+}
+
+function init() {
+  if (!currentAccountId || !accounts.find(a => a.id === currentAccountId)) {
+    showAccountScreen();
+    return;
+  }
+  loadAccountData();
+  showMainApp();
+  updateDateTime();
+  setInterval(updateDateTime, 1000);
+  refreshLocation();
+  renderVehicleSelector();
+  renderHistory();
+  renderStats();
+  renderVehicles();
+  renderFilters();
+  renderStationFilter();
+  renderAccountsManagement();
+  updateAccountBadge();
+
+  ['volumeInput','priceInput'].forEach(id => {
+    document.getElementById(id).addEventListener('input', calcTotal);
+  });
+  document.getElementById('totalInput').addEventListener('input', function() {
+    const v = parseFloat(document.getElementById('volumeInput').value);
+    const t = parseFloat(this.value);
+    if (v && t) document.getElementById('priceInput').value = (t/v).toFixed(3);
+  });
+  ['editFillVolume','editFillPrice'].forEach(id => {
+    document.getElementById(id).addEventListener('input', calcEditTotal);
+  });
+  document.getElementById('editFillTotal').addEventListener('input', function() {
+    const v = parseFloat(document.getElementById('editFillVolume').value);
+    const t = parseFloat(this.value);
+    if (v && t) document.getElementById('editFillPrice').value = (t/v).toFixed(3);
+  });
+
+  window.addEventListener('beforeinstallprompt', (e) => {
+    e.preventDefault();
+    deferredPrompt = e;
+    document.getElementById('installBanner').classList.add('show');
+  });
+}
+
+function showAccountScreen() {
+  document.getElementById('accountScreen').classList.add('active');
+  document.getElementById('mainApp').style.display = 'none';
+  renderAccountList();
+}
+
+function showMainApp() {
+  document.getElementById('accountScreen').classList.remove('active');
+  document.getElementById('mainApp').style.display = 'flex';
+}
+
+function renderAccountList() {
+  const container = document.getElementById('accountList');
+  if (!accounts.length) {
+    container.innerHTML = `
+      <div class="empty-state"><div class="icon">👤</div><div>Aucun compte créé</div></div>
+      <div class="add-account-btn" onclick="openAccountModal()">+ Créer un compte</div>
+    `;
+    return;
+  }
+  let html = accounts.map(acc => {
+    const data = DB.get('ft_data_' + acc.id, { vehicles: [], fills: [] });
+    const fCount = (data.fills || []).length;
+    const vCount = (data.vehicles || []).length;
+    return `
+      <div class="account-card" onclick="selectAccount('${acc.id}')">
+        <div class="avatar">${acc.name.charAt(0).toUpperCase()}</div>
+        <div class="info">
+          <div class="name">${acc.name}</div>
+          <div class="meta">${vCount} véhicule${vCount>1?'s':''} • ${fCount} plein${fCount>1?'s':''}</div>
+        </div>
+        <div class="actions" onclick="event.stopPropagation()">
+          <button class="btn btn-secondary btn-sm" onclick="editAccount('${acc.id}')">✏️</button>
+          <button class="btn btn-danger btn-sm" onclick="deleteAccount('${acc.id}')">🗑️</button>
+        </div>
+      </div>
+    `;
+  }).join('');
+  html += `<div class="add-account-btn" onclick="openAccountModal()">+ Ajouter un compte</div>`;
+  container.innerHTML = html;
+}
+
+function openAccountModal() {
+  editingAccountId = null;
+  document.getElementById('accountModalTitle').textContent = '👤 Nouveau compte';
+  document.getElementById('accountName').value = '';
+  document.getElementById('accountModal').classList.add('active');
+}
+
+function closeAccountModal() {
+  document.getElementById('accountModal').classList.remove('active');
+  editingAccountId = null;
+}
+
+function saveAccount() {
+  const name = document.getElementById('accountName').value.trim();
+  if (!name) { showToast('Nom requis'); return; }
+  if (editingAccountId) {
+    const idx = accounts.findIndex(a => a.id === editingAccountId);
+    accounts[idx].name = name;
+  } else {
+    const acc = { id: 'u_' + Date.now(), name, createdAt: new Date().toISOString() };
+    accounts.push(acc);
+    DB.set('ft_data_' + acc.id, { vehicles: [], fills: [] });
+  }
+  DB.set('ft_accounts', accounts);
+  closeAccountModal();
+  renderAccountList();
+  renderAccountsManagement();
+  showToast(editingAccountId ? 'Compte renommé' : 'Compte créé');
+}
+
+function editAccount(id) {
+  const acc = accounts.find(a => a.id === id);
+  if (!acc) return;
+  editingAccountId = id;
+  document.getElementById('accountModalTitle').textContent = '✏️ Renommer le compte';
+  document.getElementById('accountName').value = acc.name;
+  document.getElementById('accountModal').classList.add('active');
+}
+
+function deleteAccount(id) {
+  const acc = accounts.find(a => a.id === id);
+  if (!confirm(`Supprimer définitivement le compte "${acc.name}" et toutes ses données ?`)) return;
+  accounts = accounts.filter(a => a.id !== id);
+  DB.set('ft_accounts', accounts);
+  localStorage.removeItem('ft_data_' + id);
+  if (currentAccountId === id) {
+    currentAccountId = accounts[0]?.id || null;
+    DB.set('ft_current_account', currentAccountId);
+    if (!currentAccountId) { showAccountScreen(); return; }
+    loadAccountData();
+    showMainApp();
+    init();
+  }
+  renderAccountList();
+  renderAccountsManagement();
+  showToast('Compte supprimé');
+}
+
+function selectAccount(id) {
+  currentAccountId = id;
+  DB.set('ft_current_account', id);
+  loadAccountData();
+  selectedVehicle = vehicles[0]?.id || null;
+  selectedStation = 'all';
+  historyFilter = 'all';
+  showMainApp();
+  init();
+  showToast('Bienvenue !');
+}
+
+function logout() {
+  currentAccountId = null;
+  DB.set('ft_current_account', null);
+  vehicles = []; fills = []; selectedVehicle = null;
+  showAccountScreen();
+}
+
+function updateAccountBadge() {
+  const acc = accounts.find(a => a.id === currentAccountId);
+  document.getElementById('accountBadge').textContent = '👤 ' + (acc ? acc.name : '');
+}
+
+function renderAccountsManagement() {
+  const container = document.getElementById('accountsManagementList');
+  const current = accounts.find(a => a.id === currentAccountId);
+  document.getElementById('currentAccountCard').innerHTML = current ? `
+    <div style="display:flex;align-items:center;gap:1rem">
+      <div style="width:48px;height:48px;border-radius:50%;background:linear-gradient(135deg,var(--primary),var(--primary-light));color:white;display:flex;align-items:center;justify-content:center;font-size:1.5rem;font-weight:700">${current.name.charAt(0).toUpperCase()}</div>
+      <div><div style="font-weight:700;font-size:1.1rem">${current.name}</div><div style="font-size:0.8rem;color:var(--text-secondary)">Compte actif</div></div>
+    </div>
+  ` : '';
+
+  container.innerHTML = accounts.map(acc => {
+    const isCurrent = acc.id === currentAccountId;
+    const data = DB.get('ft_data_' + acc.id, { vehicles: [], fills: [] });
+    const fCount = (data.fills || []).length;
+    const vCount = (data.vehicles || []).length;
+    return `
+      <div class="account-card" style="margin-bottom:0.75rem;${isCurrent?'border-color:var(--primary);background:var(--bg)':''}">
+        <div class="avatar">${acc.name.charAt(0).toUpperCase()}</div>
+        <div class="info">
+          <div class="name">${acc.name} ${isCurrent?'<span style="color:var(--primary);font-size:0.75rem">(actif)</span>':''}</div>
+          <div class="meta">${vCount} véhicule${vCount>1?'s':''} • ${fCount} plein${fCount>1?'s':''}</div>
+        </div>
+        <div class="actions">
+          ${!isCurrent ? `<button class="btn btn-primary btn-sm" onclick="selectAccount('${acc.id}')">Choisir</button>` : ''}
+          <button class="btn btn-secondary btn-sm" onclick="editAccount('${acc.id}')">✏️</button>
+          <button class="btn btn-danger btn-sm" onclick="deleteAccount('${acc.id}')">🗑️</button>
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+function calcTotal() {
+  const v = parseFloat(document.getElementById('volumeInput').value);
+  const p = parseFloat(document.getElementById('priceInput').value);
+  if (v && p) document.getElementById('totalInput').value = (v * p).toFixed(2);
+}
+function calcEditTotal() {
+  const v = parseFloat(document.getElementById('editFillVolume').value);
+  const p = parseFloat(document.getElementById('editFillPrice').value);
+  if (v && p) document.getElementById('editFillTotal').value = (v * p).toFixed(2);
+}
+
+function showView(view) {
+  document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+  document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
+  document.getElementById('view-' + view).classList.add('active');
+  event.target.classList.add('active');
+  if (view === 'history') { renderHistory(); renderStationFilter(); }
+  if (view === 'stats') renderStats();
+  if (view === 'vehicles') renderVehicles();
+  if (view === 'accounts') renderAccountsManagement();
+}
+
+function updateDateTime() {
+  const now = new Date();
+  document.getElementById('autoDate').textContent = now.toLocaleString('fr-FR', {
+    weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit'
+  });
+}
+
+async function refreshLocation() {
+  const el = document.getElementById('autoLocation');
+  const status = document.getElementById('locStatus');
+  const addrEl = document.getElementById('addressDisplay');
+  el.textContent = 'Recherche...';
+  status.className = 'loc-status loading';
+  status.textContent = 'Localisation en cours...';
+  status.style.display = 'inline-block';
+  addrEl.style.display = 'none';
+  currentAddress = null;
+  if (!navigator.geolocation) {
+    el.textContent = 'Non disponible';
+    status.className = 'loc-status error';
+    status.textContent = 'Géolocalisation non supportée';
+    return;
+  }
+  navigator.geolocation.getCurrentPosition(
+    async (pos) => {
+      currentLocation = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+      el.textContent = `${pos.coords.latitude.toFixed(4)}, ${pos.coords.longitude.toFixed(4)}`;
+      status.className = 'loc-status loading';
+      status.textContent = "Recherche de l'adresse...";
+      try {
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 8000);
+        const res = await fetch(
+          `https://nominatim.openstreetmap.org/reverse?format=json&lat=${pos.coords.latitude}&lon=${pos.coords.longitude}&zoom=18&addressdetails=1`,
+          { signal: controller.signal, headers: { 'Accept-Language': 'fr' } }
+        );
+        clearTimeout(timeout);
+        const data = await res.json();
+        if (data && data.display_name) {
+          currentAddress = data.display_name;
+          addrEl.textContent = '📍 ' + currentAddress;
+          addrEl.style.display = 'block';
+          status.className = 'loc-status success';
+          status.textContent = 'Adresse trouvée';
+        } else {
+          status.className = 'loc-status error';
+          status.textContent = 'Adresse non trouvée';
         }
+      } catch(err) {
+        status.className = 'loc-status error';
+        status.textContent = 'Erreur de géocodage';
+      }
+    },
+    (err) => {
+      el.textContent = 'Position refusée';
+      status.className = 'loc-status error';
+      status.textContent = err.code === 1 ? 'Permission refusée' : 'Position indisponible';
+      currentLocation = null;
+    },
+    { enableHighAccuracy: true, timeout: 15000, maximumAge: 60000 }
+  );
+}
 
-        function calcTotal() {
-            const v = parseFloat(document.getElementById('volumeInput').value);
-            const p = parseFloat(document.getElementById('priceInput').value);
-            if(v && p) document.getElementById('totalInput').value = (v * p).toFixed(2);
-        }
-        function calcEditTotal() {
-            const v = parseFloat(document.getElementById('editFillVolume').value);
-            const p = parseFloat(document.getElementById('editFillPrice').value);
-            if(v && p) document.getElementById('editFillTotal').value = (v * p).toFixed(2);
-        }
+function handlePhoto(e) {
+  const file = e.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = function(ev) {
+    currentPhoto = ev.target.result;
+    const area = document.getElementById('photoArea');
+    area.innerHTML = `<img src="${currentPhoto}" alt="Compteur">`;
+    area.classList.add('has-image');
+    runOCR(currentPhoto);
+  };
+  reader.readAsDataURL(file);
+}
 
-        function showView(view) {
-            document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
-            document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
-            document.getElementById('view-' + view).classList.add('active');
-            event.target.classList.add('active');
-            if(view === 'history') { renderHistory(); renderStationFilter(); }
-            if(view === 'stats') renderStats();
-            if(view === 'vehicles') renderVehicles();
-        }
-
-        function updateDateTime() {
-            const now = new Date();
-            document.getElementById('autoDate').textContent = now.toLocaleString('fr-FR', {
-                weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit'
-            });
-        }
-
-        async function refreshLocation() {
-            const el = document.getElementById('autoLocation');
-            const status = document.getElementById('locStatus');
-            const addrEl = document.getElementById('addressDisplay');
-            el.textContent = 'Recherche...';
-            status.className = 'loc-status loading';
-            status.textContent = 'Localisation en cours...';
-            status.style.display = 'inline-block';
-            addrEl.style.display = 'none';
-            currentAddress = null;
-            if(!navigator.geolocation) {
-                el.textContent = 'Non disponible';
-                status.className = 'loc-status error';
-                status.textContent = 'Géolocalisation non supportée';
-                return;
-            }
-            navigator.geolocation.getCurrentPosition(
-                async (pos) => {
-                    currentLocation = { lat: pos.coords.latitude, lng: pos.coords.longitude };
-                    el.textContent = `${pos.coords.latitude.toFixed(4)}, ${pos.coords.longitude.toFixed(4)}`;
-                    status.className = 'loc-status loading';
-                    status.textContent = "Recherche de l'adresse...";
-                    try {
-                        const controller = new AbortController();
-                        const timeout = setTimeout(() => controller.abort(), 8000);
-                        const res = await fetch(
-                            `https://nominatim.openstreetmap.org/reverse?format=json&lat=${pos.coords.latitude}&lon=${pos.coords.longitude}&zoom=18&addressdetails=1`,
-                            { signal: controller.signal, headers: { 'Accept-Language': 'fr' } }
-                        );
-                        clearTimeout(timeout);
-                        const data = await res.json();
-                        if(data && data.display_name) {
-                            currentAddress = data.display_name;
-                            addrEl.textContent = '📍 ' + currentAddress;
-                            addrEl.style.display = 'block';
-                            status.className = 'loc-status success';
-                            status.textContent = 'Adresse trouvée';
-                        } else {
-                            status.className = 'loc-status error';
-                            status.textContent = 'Adresse non trouvée';
-                        }
-                    } catch(err) {
-                        status.className = 'loc-status error';
-                        status.textContent = 'Erreur de géocodage';
+async function preprocessImageForOCR(imageData) {
+            return new Promise((resolve) => {
+                const img = new Image();
+                img.onload = () => {
+                    const canvas = document.createElement('canvas');
+                    const ctx = canvas.getContext('2d');
+                    const maxWidth = 1200;
+                    let w = img.width, h = img.height;
+                    if (w > maxWidth) { h = Math.round(h * maxWidth / w); w = maxWidth; }
+                    canvas.width = w; canvas.height = h;
+                    ctx.drawImage(img, 0, 0, w, h);
+                    const imgData = ctx.getImageData(0, 0, w, h);
+                    const data = imgData.data;
+                    let min = 255, max = 0;
+                    const gray = new Uint8Array(w * h);
+                    for (let i = 0; i < data.length; i += 4) {
+                        const g = 0.299 * data[i] + 0.587 * data[i+1] + 0.114 * data[i+2];
+                        gray[i/4] = g;
+                        if (g < min) min = g;
+                        if (g > max) max = g;
                     }
-                },
-                (err) => {
-                    el.textContent = 'Position refusée';
-                    status.className = 'loc-status error';
-                    status.textContent = err.code === 1 ? 'Permission refusée' : 'Position indisponible';
-                    currentLocation = null;
-                },
-                { enableHighAccuracy: true, timeout: 15000, maximumAge: 60000 }
-            );
-        }
-
-        function handlePhoto(e) {
-            const file = e.target.files[0];
-            if(!file) return;
-            const reader = new FileReader();
-            reader.onload = function(ev) {
-                currentPhoto = ev.target.result;
-                const area = document.getElementById('photoArea');
-                area.innerHTML = `<img src="${currentPhoto}" alt="Compteur">`;
-                area.classList.add('has-image');
-                runOCR(currentPhoto);
-            };
-            reader.readAsDataURL(file);
+                    const range = max - min || 1;
+                    for (let i = 0; i < gray.length; i++) {
+                        gray[i] = ((gray[i] - min) / range) * 255;
+                    }
+                    for (let i = 0; i < data.length; i += 4) {
+                        const val = gray[i/4] > 140 ? 255 : 0;
+                        data[i] = data[i+1] = data[i+2] = val;
+                    }
+                    ctx.putImageData(imgData, 0, 0);
+                    const processedDataUrl = canvas.toDataURL('image/jpeg', 0.9);
+                    const previewEl = document.getElementById('ocrPreview');
+                    const previewImg = document.getElementById('ocrPreviewImg');
+                    if (previewEl && previewImg) {
+                        previewImg.src = processedDataUrl;
+                        previewEl.style.display = 'block';
+                    }
+                    resolve(processedDataUrl);
+                };
+                img.src = imageData;
+            });
         }
 
         async function runOCR(imageData) {
             const status = document.getElementById('ocrStatus');
             status.className = 'ocr-status loading';
-            status.textContent = '🔍 Analyse de la photo en cours...';
+            status.textContent = "🔍 Préparation de l'image...";
             try {
-                const result = await Tesseract.recognize(imageData, 'fra', {
-                    logger: m => { if(m.status === 'recognizing text') status.textContent = `🔍 Analyse... ${Math.round(m.progress*100)}%`; }
+                const processedImage = await preprocessImageForOCR(imageData);
+                status.textContent = '🔍 Analyse OCR en cours...';
+                const result = await Tesseract.recognize(processedImage, 'fra', {
+                    logger: m => { 
+                        if (m.status === 'recognizing text') status.textContent = `🔍 Analyse... ${Math.round(m.progress*100)}%`; 
+                    },
+                    errorHandler: err => console.warn('Tesseract warn:', err)
                 });
                 const text = result.data.text;
-                const numbers = text.match(/\d+[,.]?\d*/g) || [];
-                let volume = null, price = null;
-                const lines = text.split('\n');
-                for(let line of lines) {
-                    const lline = line.toLowerCase();
-                    if((lline.includes('l') || lline.includes('litre')) && !volume) {
-                        const m = line.match(/(\d+[,.]\d+)/);
-                        if(m) volume = parseFloat(m[1].replace(',', '.'));
+                const lines = text.split(/\r?\n/).filter(l => l.trim());
+                console.log('OCR raw:', text);
+                console.log('OCR lines:', lines);
+
+                const numberMatches = [];
+                const numRegex = /(\d+[,.]\d{1,3})/g;
+                let m;
+                while ((m = numRegex.exec(text)) !== null) {
+                    numberMatches.push(parseFloat(m[1].replace(',', '.')));
+                }
+                const intRegex = /\b(\d{1,3})\b/g;
+                while ((m = intRegex.exec(text)) !== null) {
+                    const val = parseInt(m[1]);
+                    if (val >= 1 && val <= 200) numberMatches.push(val);
+                }
+
+                let volume = null, price = null, total = null;
+
+                for (const line of lines) {
+                    const lower = line.toLowerCase();
+                    const nums = [...line.matchAll(/\d+[,.]?\d*/g)].map(x => x[0]);
+
+                    if ((lower.match(/\b(l|litre|litres|volume|qty|qte|quantite|quantité)\b/) || lower.includes(' l ')) && nums.length > 0) {
+                        const candidates = nums.map(n => parseFloat(n.replace(',', '.'))).filter(n => n > 0.5 && n < 300);
+                        if (candidates.length && !volume) volume = candidates[0];
                     }
-                    if((lline.includes('€') || lline.includes('eur') || lline.includes('prix')) && !price) {
-                        const m = line.match(/(\d+[,.]\d{2,3})/);
-                        if(m) price = parseFloat(m[1].replace(',', '.'));
+                    if ((lower.match(/\b(prix|price|€|eur|euro|p\/l|pl)\b/) || lower.includes('/l')) && nums.length > 0) {
+                        const candidates = nums.map(n => parseFloat(n.replace(',', '.'))).filter(n => n > 0.5 && n < 5);
+                        if (candidates.length && !price) price = candidates[0];
+                    }
+                    if ((lower.match(/\b(total|montant|amount|a payer|à payer|sum)\b/) || lower.includes('total')) && nums.length > 0) {
+                        const candidates = nums.map(n => parseFloat(n.replace(',', '.'))).filter(n => n > 1 && n < 500);
+                        if (candidates.length && !total) total = candidates[0];
                     }
                 }
-                if(!volume || !price) {
-                    const decimals = numbers.filter(n => n.includes(',') || n.includes('.'))
-                        .map(n => parseFloat(n.replace(',', '.')))
-                        .filter(n => n > 0.5 && n < 200);
+
+                if (!volume || !price) {
+                    const decimals = numberMatches.filter(n => {
+                        const s = String(n);
+                        return s.includes('.') && n > 0.5 && n < 300;
+                    });
                     decimals.sort((a,b) => b-a);
-                    if(!volume && decimals[0]) volume = decimals[0];
-                    if(!price && decimals[1]) price = decimals[1];
+                    if (!volume) {
+                        const volCandidates = decimals.filter(n => n >= 5 && n <= 150);
+                        if (volCandidates.length) volume = volCandidates[0];
+                    }
+                    if (!price) {
+                        const priceCandidates = numberMatches.filter(n => n >= 1.0 && n <= 3.0);
+                        if (priceCandidates.length) price = priceCandidates[0];
+                    }
+                    if (!total) {
+                        const totalCandidates = decimals.filter(n => n >= 10 && n <= 300 && n !== volume);
+                        if (totalCandidates.length) total = totalCandidates[0];
+                    }
                 }
-                if(volume) document.getElementById('volumeInput').value = volume;
-                if(price) document.getElementById('priceInput').value = price;
+
+                if (volume && total && !price) {
+                    price = total / volume;
+                }
+
+                let detected = [];
+                if (volume) { document.getElementById('volumeInput').value = volume.toFixed(2); detected.push(volume.toFixed(2) + 'L'); }
+                if (price) { document.getElementById('priceInput').value = price.toFixed(3); detected.push(price.toFixed(3) + '€/L'); }
+                if (total) { document.getElementById('totalInput').value = total.toFixed(2); detected.push(total.toFixed(2) + '€'); }
+
+                if (!volume && !price && !total) {
+                    const allNums = [...new Set(numberMatches)].sort((a,b) => b-a);
+                    if (allNums.length >= 1 && !volume) {
+                        const v = allNums.find(n => n >= 5 && n <= 150);
+                        if (v) { document.getElementById('volumeInput').value = v.toFixed(2); detected.push(v.toFixed(2) + 'L'); }
+                    }
+                    if (allNums.length >= 2 && !price) {
+                        const p = allNums.find(n => n >= 1.0 && n <= 3.0);
+                        if (p) { document.getElementById('priceInput').value = p.toFixed(3); detected.push(p.toFixed(3) + '€/L'); }
+                    }
+                }
+
                 calcTotal();
                 status.className = 'ocr-status success';
-                status.textContent = volume || price 
-                    ? `✅ Détecté: ${volume ? volume+'L' : ''} ${price ? price+'€/L' : ''}`
-                    : '✅ Photo analysée (aucune valeur détectée)';
+                status.textContent = detected.length 
+                    ? `✅ Détecté: ${detected.join(' • ')}`
+                    : "⚠️ Aucune valeur fiable détectée. Vérifiez la photo ou saisissez manuellement.";
             } catch(err) {
+                console.error('OCR Error:', err);
                 status.className = 'ocr-status error';
-                status.textContent = '❌ Échec OCR - Saisie manuelle requise';
+                status.textContent = '❌ Échec OCR (' + (err.message || 'erreur inconnue') + '). Saisie manuelle requise.';
             }
         }
 
         function renderVehicleSelector() {
-            const container = document.getElementById('vehicleSelector');
-            if(!vehicles.length) {
-                container.innerHTML = '<span style="color:var(--text-secondary);font-size:0.875rem">Aucun véhicule</span>';
-                return;
-            }
-            container.innerHTML = vehicles.map(v => `
-                <div class="vehicle-chip ${selectedVehicle===v.id?'active':''}" onclick="selectVehicle('${v.id}')">
-                    🚗 ${v.name}
-                </div>
-            `).join('');
-        }
+  const container = document.getElementById('vehicleSelector');
+  if (!vehicles.length) {
+    container.innerHTML = '<span style="color:var(--text-secondary);font-size:0.875rem">Aucun véhicule</span>';
+    return;
+  }
+  container.innerHTML = vehicles.map(v => `
+    <div class="vehicle-chip ${selectedVehicle===v.id?'active':''}" onclick="selectVehicle('${v.id}')">🚗 ${v.name}</div>
+  `).join('');
+}
+function selectVehicle(id) { selectedVehicle = id; renderVehicleSelector(); }
 
-        function selectVehicle(id) {
-            selectedVehicle = id;
-            renderVehicleSelector();
-        }
+function renderVehicles() {
+  const container = document.getElementById('vehiclesList');
+  if (!vehicles.length) {
+    container.innerHTML = `<div class="empty-state"><div class="icon">🚗</div><div>Aucun véhicule enregistré</div></div>`;
+    return;
+  }
+  container.innerHTML = vehicles.map(v => {
+    const vFills = fills.filter(f => f.vehicleId === v.id);
+    const totalVol = vFills.reduce((s,f) => s + (f.volume||0), 0);
+    const totalCost = vFills.reduce((s,f) => s + (f.total||0), 0);
+    return `
+      <div class="card">
+        <div style="display:flex;justify-content:space-between;align-items:start">
+          <div>
+            <div style="font-weight:700;font-size:1.1rem">🚗 ${v.name}</div>
+            <div style="font-size:0.875rem;color:var(--text-secondary);margin-top:0.25rem">${v.plate ? '📋 '+v.plate+' • ' : ''}⛽ ${v.fuelType}</div>
+          </div>
+          <div style="display:flex;gap:0.5rem">
+            <button class="btn btn-secondary btn-sm" onclick="editVehicle('${v.id}')">✏️</button>
+            <button class="btn btn-danger btn-sm" onclick="deleteVehicle('${v.id}')">🗑️</button>
+          </div>
+        </div>
+        <div class="stats-grid" style="margin-top:1rem">
+          <div class="stat-box"><div class="stat-value">${vFills.length}</div><div class="stat-label">Pleins</div></div>
+          <div class="stat-box"><div class="stat-value">${totalVol.toFixed(0)}</div><div class="stat-label">Litres</div></div>
+          <div class="stat-box"><div class="stat-value">${totalCost.toFixed(0)}€</div><div class="stat-label">Dépensé</div></div>
+        </div>
+      </div>`;
+  }).join('');
+}
 
-        function renderVehicles() {
-            const container = document.getElementById('vehiclesList');
-            if(!vehicles.length) {
-                container.innerHTML = `<div class="empty-state"><div class="icon">🚗</div><div>Aucun véhicule enregistré</div></div>`;
-                return;
-            }
-            container.innerHTML = vehicles.map(v => {
-                const vFills = fills.filter(f => f.vehicleId === v.id);
-                const totalVol = vFills.reduce((s,f) => s + (f.volume||0), 0);
-                const totalCost = vFills.reduce((s,f) => s + (f.total||0), 0);
-                return `
-                <div class="card">
-                    <div style="display:flex;justify-content:space-between;align-items:start">
-                        <div>
-                            <div style="font-weight:700;font-size:1.1rem">🚗 ${v.name}</div>
-                            <div style="font-size:0.875rem;color:var(--text-secondary);margin-top:0.25rem">
-                                ${v.plate ? '📋 '+v.plate+' • ' : ''}⛽ ${v.fuelType}
-                            </div>
-                        </div>
-                        <div style="display:flex;gap:0.5rem">
-                            <button class="btn btn-secondary btn-sm" onclick="editVehicle('${v.id}')">✏️</button>
-                            <button class="btn btn-danger btn-sm" onclick="deleteVehicle('${v.id}')">🗑️</button>
-                        </div>
-                    </div>
-                    <div class="stats-grid" style="margin-top:1rem">
-                        <div class="stat-box"><div class="stat-value">${vFills.length}</div><div class="stat-label">Pleins</div></div>
-                        <div class="stat-box"><div class="stat-value">${totalVol.toFixed(0)}</div><div class="stat-label">Litres</div></div>
-                        <div class="stat-box"><div class="stat-value">${totalCost.toFixed(0)}€</div><div class="stat-label">Dépensé</div></div>
-                    </div>
-                </div>`;
-            }).join('');
-        }
+function openVehicleModal() {
+  editingVehicleId = null;
+  document.getElementById('vehicleName').value = '';
+  document.getElementById('vehiclePlate').value = '';
+  document.getElementById('vehicleFuel').value = 'SP95';
+  document.getElementById('vehicleModal').classList.add('active');
+}
+function closeVehicleModal() { document.getElementById('vehicleModal').classList.remove('active'); }
 
-        function openVehicleModal() {
-            editingVehicleId = null;
-            document.getElementById('vehicleName').value = '';
-            document.getElementById('vehiclePlate').value = '';
-            document.getElementById('vehicleFuel').value = 'SP95';
-            document.getElementById('vehicleModal').classList.add('active');
-        }
-        function closeVehicleModal() { document.getElementById('vehicleModal').classList.remove('active'); }
+function saveVehicle() {
+  const name = document.getElementById('vehicleName').value.trim();
+  if (!name) { showToast('Nom requis'); return; }
+  const vehicle = {
+    id: editingVehicleId || 'v_' + Date.now(),
+    name, plate: document.getElementById('vehiclePlate').value.trim(),
+    fuelType: document.getElementById('vehicleFuel').value
+  };
+  if (editingVehicleId) {
+    const idx = vehicles.findIndex(v => v.id === editingVehicleId);
+    vehicles[idx] = vehicle;
+  } else {
+    vehicles.push(vehicle);
+    if (!selectedVehicle) selectedVehicle = vehicle.id;
+  }
+  saveAccountData();
+  closeVehicleModal();
+  renderVehicleSelector();
+  renderVehicles();
+  renderFilters();
+  showToast('Véhicule enregistré');
+}
 
-        function saveVehicle() {
-            const name = document.getElementById('vehicleName').value.trim();
-            if(!name) { showToast('Nom requis'); return; }
-            const vehicle = {
-                id: editingVehicleId || 'v_' + Date.now(),
-                name,
-                plate: document.getElementById('vehiclePlate').value.trim(),
-                fuelType: document.getElementById('vehicleFuel').value
-            };
-            if(editingVehicleId) {
-                const idx = vehicles.findIndex(v => v.id === editingVehicleId);
-                vehicles[idx] = vehicle;
-            } else {
-                vehicles.push(vehicle);
-                if(!selectedVehicle) selectedVehicle = vehicle.id;
-            }
-            DB.set('vehicles', vehicles);
-            closeVehicleModal();
-            renderVehicleSelector();
-            renderVehicles();
-            renderFilters();
-            showToast('Véhicule enregistré');
-        }
+function editVehicle(id) {
+  const v = vehicles.find(x => x.id === id);
+  if (!v) return;
+  editingVehicleId = id;
+  document.getElementById('vehicleName').value = v.name;
+  document.getElementById('vehiclePlate').value = v.plate || '';
+  document.getElementById('vehicleFuel').value = v.fuelType || 'SP95';
+  document.getElementById('vehicleModal').classList.add('active');
+}
 
-        function editVehicle(id) {
-            const v = vehicles.find(x => x.id === id);
-            if(!v) return;
-            editingVehicleId = id;
-            document.getElementById('vehicleName').value = v.name;
-            document.getElementById('vehiclePlate').value = v.plate || '';
-            document.getElementById('vehicleFuel').value = v.fuelType || 'SP95';
-            document.getElementById('vehicleModal').classList.add('active');
-        }
+function deleteVehicle(id) {
+  if (!confirm('Supprimer ce véhicule et tous ses pleins ?')) return;
+  vehicles = vehicles.filter(v => v.id !== id);
+  fills = fills.filter(f => f.vehicleId !== id);
+  saveAccountData();
+  if (selectedVehicle === id) selectedVehicle = vehicles[0]?.id || null;
+  renderVehicleSelector();
+  renderVehicles();
+  renderHistory();
+  renderStats();
+  renderFilters();
+  renderStationFilter();
+  showToast('Véhicule supprimé');
+}
 
-        function deleteVehicle(id) {
-            if(!confirm('Supprimer ce véhicule et tous ses pleins ?')) return;
-            vehicles = vehicles.filter(v => v.id !== id);
-            fills = fills.filter(f => f.vehicleId !== id);
-            DB.set('vehicles', vehicles);
-            DB.set('fills', fills);
-            if(selectedVehicle === id) selectedVehicle = vehicles[0]?.id || null;
-            renderVehicleSelector();
-            renderVehicles();
-            renderHistory();
-            renderStats();
-            renderFilters();
-            renderStationFilter();
-            showToast('Véhicule supprimé');
-        }
+function saveFill() {
+  if (!selectedVehicle) { showToast('Sélectionnez un véhicule'); return; }
+  const volume = parseFloat(document.getElementById('volumeInput').value);
+  const price = parseFloat(document.getElementById('priceInput').value);
+  const total = parseFloat(document.getElementById('totalInput').value);
+  const km = parseFloat(document.getElementById('kmInput').value);
+  if (!volume || !price) { showToast('Volume et prix requis'); return; }
+  const fill = {
+    id: 'f_' + Date.now(), vehicleId: selectedVehicle,
+    date: new Date().toISOString(), volume, pricePerLiter: price,
+    total: total || (volume * price), km: km || null,
+    location: currentLocation, address: currentAddress, photo: currentPhoto
+  };
+  fills.unshift(fill);
+  saveAccountData();
+  document.getElementById('volumeInput').value = '';
+  document.getElementById('priceInput').value = '';
+  document.getElementById('totalInput').value = '';
+  document.getElementById('kmInput').value = '';
+  document.getElementById('ocrStatus').style.display = 'none';
+  document.getElementById('addressDisplay').style.display = 'none';
+  currentPhoto = null; currentAddress = null;
+  const area = document.getElementById('photoArea');
+  area.classList.remove('has-image');
+  area.innerHTML = `
+    <div class="photo-placeholder">📷</div>
+    <div class="photo-text">Appuyez pour prendre une photo</div>
+    <input type="file" id="photoInput" class="photo-input" accept="image/*" capture="environment" onchange="handlePhoto(event)">
+  `;
+  showToast('Plein enregistré !');
+  renderHistory();
+  renderStats();
+  renderStationFilter();
+}
 
-        function saveFill() {
-            if(!selectedVehicle) { showToast('Sélectionnez un véhicule'); return; }
-            const volume = parseFloat(document.getElementById('volumeInput').value);
-            const price = parseFloat(document.getElementById('priceInput').value);
-            const total = parseFloat(document.getElementById('totalInput').value);
-            const km = parseFloat(document.getElementById('kmInput').value);
-            if(!volume || !price) { showToast('Volume et prix requis'); return; }
-            const fill = {
-                id: 'f_' + Date.now(),
-                vehicleId: selectedVehicle,
-                date: new Date().toISOString(),
-                volume, pricePerLiter: price,
-                total: total || (volume * price),
-                km: km || null,
-                location: currentLocation,
-                address: currentAddress,
-                photo: currentPhoto
-            };
-            fills.unshift(fill);
-            DB.set('fills', fills);
-            document.getElementById('volumeInput').value = '';
-            document.getElementById('priceInput').value = '';
-            document.getElementById('totalInput').value = '';
-            document.getElementById('kmInput').value = '';
-            document.getElementById('ocrStatus').style.display = 'none';
-            document.getElementById('addressDisplay').style.display = 'none';
-            currentPhoto = null; currentAddress = null;
-            const area = document.getElementById('photoArea');
-            area.classList.remove('has-image');
-            area.innerHTML = `
-                <div class="photo-placeholder">📷</div>
-                <div class="photo-text">Appuyez pour prendre une photo</div>
-                <input type="file" id="photoInput" class="photo-input" accept="image/*" capture="environment" onchange="handlePhoto(event)">
-            `;
-            showToast('Plein enregistré !');
-            renderHistory();
-            renderStats();
-            renderStationFilter();
-        }
+function openFillModal(fillId) {
+  const f = fills.find(x => x.id === fillId);
+  if (!f) return;
+  editingFillId = fillId;
+  const sel = document.getElementById('editFillVehicle');
+  sel.innerHTML = vehicles.map(v => `<option value="${v.id}" ${v.id===f.vehicleId?'selected':''}>${v.name}</option>`).join('');
+  const d = new Date(f.date);
+  const pad = n => String(n).padStart(2,'0');
+  document.getElementById('editFillDate').value = `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  document.getElementById('editFillVolume').value = f.volume;
+  document.getElementById('editFillPrice').value = f.pricePerLiter;
+  document.getElementById('editFillTotal').value = f.total.toFixed(2);
+  document.getElementById('editFillKm').value = f.km || '';
+  document.getElementById('fillModal').classList.add('active');
+}
+function closeFillModal() { document.getElementById('fillModal').classList.remove('active'); editingFillId = null; }
 
-        function openFillModal(fillId) {
-            const f = fills.find(x => x.id === fillId);
-            if(!f) return;
-            editingFillId = fillId;
-            const sel = document.getElementById('editFillVehicle');
-            sel.innerHTML = vehicles.map(v => `<option value="${v.id}" ${v.id===f.vehicleId?'selected':''}>${v.name}</option>`).join('');
-            const d = new Date(f.date);
-            const pad = n => String(n).padStart(2,'0');
-            document.getElementById('editFillDate').value = `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
-            document.getElementById('editFillVolume').value = f.volume;
-            document.getElementById('editFillPrice').value = f.pricePerLiter;
-            document.getElementById('editFillTotal').value = f.total.toFixed(2);
-            document.getElementById('editFillKm').value = f.km || '';
-            document.getElementById('fillModal').classList.add('active');
-        }
-        function closeFillModal() { document.getElementById('fillModal').classList.remove('active'); editingFillId = null; }
+function updateFill() {
+  if (!editingFillId) return;
+  const idx = fills.findIndex(f => f.id === editingFillId);
+  if (idx === -1) return;
+  const vehicleId = document.getElementById('editFillVehicle').value;
+  const dateVal = document.getElementById('editFillDate').value;
+  const volume = parseFloat(document.getElementById('editFillVolume').value);
+  const price = parseFloat(document.getElementById('editFillPrice').value);
+  const total = parseFloat(document.getElementById('editFillTotal').value);
+  const km = parseFloat(document.getElementById('editFillKm').value);
+  if (!volume || !price) { showToast('Volume et prix requis'); return; }
+  fills[idx] = {
+    ...fills[idx], vehicleId,
+    date: dateVal ? new Date(dateVal).toISOString() : fills[idx].date,
+    volume, pricePerLiter: price, total: total || (volume * price), km: km || null
+  };
+  saveAccountData();
+  closeFillModal();
+  renderHistory();
+  renderStats();
+  renderVehicles();
+  renderStationFilter();
+  showToast('Plein mis à jour');
+}
 
-        function updateFill() {
-            if(!editingFillId) return;
-            const idx = fills.findIndex(f => f.id === editingFillId);
-            if(idx === -1) return;
-            const vehicleId = document.getElementById('editFillVehicle').value;
-            const dateVal = document.getElementById('editFillDate').value;
-            const volume = parseFloat(document.getElementById('editFillVolume').value);
-            const price = parseFloat(document.getElementById('editFillPrice').value);
-            const total = parseFloat(document.getElementById('editFillTotal').value);
-            const km = parseFloat(document.getElementById('editFillKm').value);
-            if(!volume || !price) { showToast('Volume et prix requis'); return; }
-            fills[idx] = {
-                ...fills[idx],
-                vehicleId,
-                date: dateVal ? new Date(dateVal).toISOString() : fills[idx].date,
-                volume, pricePerLiter: price,
-                total: total || (volume * price),
-                km: km || null
-            };
-            DB.set('fills', fills);
-            closeFillModal();
-            renderHistory();
-            renderStats();
-            renderVehicles();
-            renderStationFilter();
-            showToast('Plein mis à jour');
-        }
+function deleteFill(fillId) {
+  if (!confirm('Supprimer définitivement ce plein ?')) return;
+  fills = fills.filter(f => f.id !== fillId);
+  saveAccountData();
+  renderHistory();
+  renderStats();
+  renderVehicles();
+  renderStationFilter();
+  showToast('Plein supprimé');
+}
 
-        function deleteFill(fillId) {
-            if(!confirm('Supprimer définitivement ce plein ?')) return;
-            fills = fills.filter(f => f.id !== fillId);
-            DB.set('fills', fills);
-            renderHistory();
-            renderStats();
-            renderVehicles();
-            renderStationFilter();
-            showToast('Plein supprimé');
-        }
+let historyFilter = 'all';
+function renderFilters() {
+  const containers = ['historyFilter', 'statsFilter'];
+  containers.forEach(cid => {
+    const c = document.getElementById(cid);
+    if (!vehicles.length) { c.innerHTML = ''; return; }
+    c.innerHTML = `
+      <div class="vehicle-chip ${historyFilter==='all'?'active':''}" onclick="setFilter('all')">Tous</div>
+      ${vehicles.map(v => `<div class="vehicle-chip ${historyFilter===v.id?'active':''}" onclick="setFilter('${v.id}')">${v.name}</div>`).join('')}
+    `;
+  });
+}
+function setFilter(id) {
+  historyFilter = id;
+  renderFilters();
+  renderHistory();
+  renderStats();
+}
 
-        let historyFilter = 'all';
-        function renderFilters() {
-            const containers = ['historyFilter', 'statsFilter'];
-            containers.forEach(cid => {
-                const c = document.getElementById(cid);
-                if(!vehicles.length) { c.innerHTML = ''; return; }
-                c.innerHTML = `
-                    <div class="vehicle-chip ${historyFilter==='all'?'active':''}" onclick="setFilter('all')">Tous</div>
-                    ${vehicles.map(v => `<div class="vehicle-chip ${historyFilter===v.id?'active':''}" onclick="setFilter('${v.id}')">${v.name}</div>`).join('')}
-                `;
-            });
-        }
-        function setFilter(id) {
-            historyFilter = id;
-            renderFilters();
-            renderHistory();
-            renderStats();
-        }
+function getStations() {
+  const stations = {};
+  fills.forEach(f => {
+    if (!f.address) return;
+    const key = f.address;
+    if (!stations[key]) stations[key] = { address: key, count: 0, volume: 0, cost: 0, fills: [] };
+    stations[key].count += 1;
+    stations[key].volume += f.volume;
+    stations[key].cost += f.total;
+    stations[key].fills.push(f);
+  });
+  return Object.values(stations).sort((a,b) => b.cost - a.cost);
+}
 
-        function getStations() {
-            const stations = {};
-            fills.forEach(f => {
-                if(!f.address) return;
-                const key = f.address;
-                if(!stations[key]) stations[key] = { address: key, count: 0, volume: 0, cost: 0, fills: [] };
-                stations[key].count += 1;
-                stations[key].volume += f.volume;
-                stations[key].cost += f.total;
-                stations[key].fills.push(f);
-            });
-            return Object.values(stations).sort((a,b) => b.cost - a.cost);
-        }
+function renderStationFilter() {
+  const container = document.getElementById('stationFilter');
+  const stations = getStations();
+  if (!stations.length) {
+    container.innerHTML = '<span style="color:var(--text-secondary);font-size:0.8rem">Aucune station géolocalisée</span>';
+    return;
+  }
+  container.innerHTML = `
+    <div class="station-chip ${selectedStation==='all'?'active':''}" onclick="setStationFilter('all')">Toutes</div>
+    ${stations.map(s => {
+      const short = s.address.split(',')[0];
+      const esc = s.address.replace(/'/g, "\\'");
+      return `<div class="station-chip ${selectedStation===s.address?'active':''}" onclick="setStationFilter('${esc}')" title="${s.address}">⛽ ${short}</div>`;
+    }).join('')}
+  `;
+}
+function setStationFilter(addr) {
+  selectedStation = addr;
+  renderStationFilter();
+  renderHistory();
+  renderStats();
+}
 
-        function renderStationFilter() {
-            const container = document.getElementById('stationFilter');
-            const stations = getStations();
-            if(!stations.length) {
-                container.innerHTML = '<span style="color:var(--text-secondary);font-size:0.8rem">Aucune station géolocalisée</span>';
-                return;
-            }
-            container.innerHTML = `
-                <div class="station-chip ${selectedStation==='all'?'active':''}" onclick="setStationFilter('all')">Toutes</div>
-                ${stations.map(s => {
-                    const short = s.address.split(',')[0];
-                    const esc = s.address.replace(/'/g, "\\'");
-                    return `<div class="station-chip ${selectedStation===s.address?'active':''}" onclick="setStationFilter('${esc}')" title="${s.address}">⛽ ${short}</div>`;
-                }).join('')}
-            `;
-        }
+function renderHistory() {
+  const container = document.getElementById('historyList');
+  let list = fills;
+  if (historyFilter !== 'all') list = list.filter(f => f.vehicleId === historyFilter);
+  if (selectedStation !== 'all') list = list.filter(f => f.address === selectedStation);
+  if (!list.length) {
+    container.innerHTML = `<div class="empty-state"><div class="icon">📋</div><div>Aucun plein ne correspond aux filtres</div></div>`;
+    return;
+  }
+  container.innerHTML = list.map(f => {
+    const v = vehicles.find(x => x.id === f.vehicleId);
+    const date = new Date(f.date);
+    const addr = f.address ? f.address.split(',').slice(0,2).join(', ') : null;
+    return `
+      <div class="fill-item">
+        ${f.photo ? `<img src="${f.photo}" class="fill-thumb" onclick="showImage('${f.photo}')">` : `<div class="fill-thumb" style="display:flex;align-items:center;justify-content:center;font-size:1.5rem">⛽</div>`}
+        <div class="fill-info">
+          <div class="fill-vehicle">${v ? v.name : 'Inconnu'}</div>
+          ${addr ? `<div class="fill-station">📍 ${addr}</div>` : `<div class="fill-station no-addr">📍 Position non enregistrée</div>`}
+          <div class="fill-meta">
+            📅 ${date.toLocaleDateString('fr-FR')} • 🕐 ${date.toLocaleTimeString('fr-FR', {hour:'2-digit', minute:'2-digit'})}
+            ${f.km ? '• 🛣️ ' + f.km + ' km' : ''}
+          </div>
+        </div>
+        <div style="display:flex;flex-direction:column;align-items:flex-end;gap:0.4rem">
+          <div class="fill-amount">
+            <div class="fill-price">${f.total.toFixed(2)}€</div>
+            <div class="fill-volume">${f.volume.toFixed(1)}L @ ${f.pricePerLiter.toFixed(3)}€</div>
+          </div>
+          <div style="display:flex;gap:0.3rem">
+            <button class="btn btn-secondary btn-sm" style="padding:0.3rem 0.6rem;font-size:0.75rem" onclick="openFillModal('${f.id}')">✏️</button>
+            <button class="btn btn-danger btn-sm" style="padding:0.3rem 0.6rem;font-size:0.75rem" onclick="deleteFill('${f.id}')">🗑️</button>
+          </div>
+        </div>
+      </div>`;
+  }).join('');
+}
 
-        function setStationFilter(addr) {
-            selectedStation = addr;
-            renderStationFilter();
-            renderHistory();
-            renderStats();
-        }
+function showImage(src) {
+  const overlay = document.createElement('div');
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.9);z-index:300;display:flex;align-items:center;justify-content:center;padding:1rem';
+  overlay.innerHTML = `<img src="${src}" style="max-width:100%;max-height:90vh;border-radius:12px">`;
+  overlay.onclick = () => overlay.remove();
+  document.body.appendChild(overlay);
+}
 
-        function renderHistory() {
-            const container = document.getElementById('historyList');
-            let list = fills;
-            if(historyFilter !== 'all') list = list.filter(f => f.vehicleId === historyFilter);
-            if(selectedStation !== 'all') list = list.filter(f => f.address === selectedStation);
-            if(!list.length) {
-                container.innerHTML = `<div class="empty-state"><div class="icon">📋</div><div>Aucun plein ne correspond aux filtres</div></div>`;
-                return;
-            }
-            container.innerHTML = list.map(f => {
-                const v = vehicles.find(x => x.id === f.vehicleId);
-                const date = new Date(f.date);
-                const addr = f.address ? f.address.split(',').slice(0,2).join(', ') : null;
-                return `
-                <div class="fill-item">
-                    ${f.photo ? `<img src="${f.photo}" class="fill-thumb" onclick="showImage('${f.photo}')">` : `<div class="fill-thumb" style="display:flex;align-items:center;justify-content:center;font-size:1.5rem">⛽</div>`}
-                    <div class="fill-info">
-                        <div class="fill-vehicle">${v ? v.name : 'Inconnu'}</div>
-                        ${addr ? `<div class="fill-station">📍 ${addr}</div>` : `<div class="fill-station no-addr">📍 Position non enregistrée</div>`}
-                        <div class="fill-meta">
-                            📅 ${date.toLocaleDateString('fr-FR')} • 🕐 ${date.toLocaleTimeString('fr-FR', {hour:'2-digit', minute:'2-digit'})}
-                            ${f.km ? '• 🛣️ ' + f.km + ' km' : ''}
-                        </div>
-                    </div>
-                    <div style="display:flex;flex-direction:column;align-items:flex-end;gap:0.4rem">
-                        <div class="fill-amount">
-                            <div class="fill-price">${f.total.toFixed(2)}€</div>
-                            <div class="fill-volume">${f.volume.toFixed(1)}L @ ${f.pricePerLiter.toFixed(3)}€</div>
-                        </div>
-                        <div style="display:flex;gap:0.3rem">
-                            <button class="btn btn-secondary btn-sm" style="padding:0.3rem 0.6rem;font-size:0.75rem" onclick="openFillModal('${f.id}')">✏️</button>
-                            <button class="btn btn-danger btn-sm" style="padding:0.3rem 0.6rem;font-size:0.75rem" onclick="deleteFill('${f.id}')">🗑️</button>
-                        </div>
-                    </div>
-                </div>`;
-            }).join('');
-        }
+function setPeriod(p) {
+  statsPeriod = p;
+  document.querySelectorAll('.period-btn').forEach(b => b.classList.remove('active'));
+  event.target.classList.add('active');
+  renderStats();
+}
 
-        function showImage(src) {
-            const overlay = document.createElement('div');
-            overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.9);z-index:300;display:flex;align-items:center;justify-content:center;padding:1rem';
-            overlay.innerHTML = `<img src="${src}" style="max-width:100%;max-height:90vh;border-radius:12px">`;
-            overlay.onclick = () => overlay.remove();
-            document.body.appendChild(overlay);
-        }
+function renderStats() {
+  const container = document.getElementById('statsContent');
+  let data = fills;
+  if (historyFilter !== 'all') data = data.filter(f => f.vehicleId === historyFilter);
+  if (selectedStation !== 'all') data = data.filter(f => f.address === selectedStation);
+  if (!data.length) {
+    container.innerHTML = `<div class="empty-state"><div class="icon">📊</div><div>Pas assez de données</div></div>`;
+    return;
+  }
+  const totalVol = data.reduce((s,f) => s + f.volume, 0);
+  const totalCost = data.reduce((s,f) => s + f.total, 0);
+  const avgPrice = data.reduce((s,f) => s + f.pricePerLiter, 0) / data.length;
+  const count = data.length;
 
-        function setPeriod(p) {
-            statsPeriod = p;
-            document.querySelectorAll('.period-btn').forEach(b => b.classList.remove('active'));
-            event.target.classList.add('active');
-            renderStats();
-        }
+  const groups = {};
+  data.forEach(f => {
+    const d = new Date(f.date);
+    const key = statsPeriod === 'month' ? `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}` : `${d.getFullYear()}`;
+    if (!groups[key]) groups[key] = { volume: 0, cost: 0, count: 0, prices: [] };
+    groups[key].volume += f.volume;
+    groups[key].cost += f.total;
+    groups[key].count += 1;
+    groups[key].prices.push(f.pricePerLiter);
+  });
+  const sortedKeys = Object.keys(groups).sort();
 
-        function renderStats() {
-            const container = document.getElementById('statsContent');
-            let data = fills;
-            if(historyFilter !== 'all') data = data.filter(f => f.vehicleId === historyFilter);
-            if(selectedStation !== 'all') data = data.filter(f => f.address === selectedStation);
-            if(!data.length) {
-                container.innerHTML = `<div class="empty-state"><div class="icon">📊</div><div>Pas assez de données</div></div>`;
-                return;
-            }
-            const totalVol = data.reduce((s,f) => s + f.volume, 0);
-            const totalCost = data.reduce((s,f) => s + f.total, 0);
-            const avgPrice = data.reduce((s,f) => s + f.pricePerLiter, 0) / data.length;
-            const count = data.length;
+  const stationStats = {};
+  data.forEach(f => {
+    const addr = f.address || 'Station inconnue';
+    if (!stationStats[addr]) stationStats[addr] = { volume: 0, cost: 0, count: 0, prices: [] };
+    stationStats[addr].volume += f.volume;
+    stationStats[addr].cost += f.total;
+    stationStats[addr].count += 1;
+    stationStats[addr].prices.push(f.pricePerLiter);
+  });
+  const sortedStations = Object.entries(stationStats).sort((a,b) => b[1].cost - a[1].cost);
 
-            const groups = {};
-            data.forEach(f => {
-                const d = new Date(f.date);
-                const key = statsPeriod === 'month' ? `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}` : `${d.getFullYear()}`;
-                if(!groups[key]) groups[key] = { volume: 0, cost: 0, count: 0, prices: [] };
-                groups[key].volume += f.volume;
-                groups[key].cost += f.total;
-                groups[key].count += 1;
-                groups[key].prices.push(f.pricePerLiter);
-            });
-            const sortedKeys = Object.keys(groups).sort();
+  let html = `
+    <div class="stats-grid">
+      <div class="stat-box"><div class="stat-value">${count}</div><div class="stat-label">Pleins</div></div>
+      <div class="stat-box"><div class="stat-value">${totalVol.toFixed(0)}</div><div class="stat-label">Litres totals</div></div>
+      <div class="stat-box"><div class="stat-value">${totalCost.toFixed(0)}€</div><div class="stat-label">Coût total</div></div>
+      <div class="stat-box"><div class="stat-value">${avgPrice.toFixed(3)}€</div><div class="stat-label">Prix moyen/L</div></div>
+    </div>
+    <div class="card">
+      <div class="card-title">📈 Évolution des dépenses</div>
+      <div class="chart-container"><canvas id="costChart"></canvas></div>
+    </div>
+    <div class="card">
+      <div class="card-title">⛽ Volume par période</div>
+      <div class="chart-container"><canvas id="volChart"></canvas></div>
+    </div>
+    <div class="card">
+      <div class="card-title">🗺️ Dépenses par station</div>
+  `;
+  sortedStations.forEach(([addr, s]) => {
+    const avgP = s.prices.reduce((a,b)=>a+b,0)/s.prices.length;
+    const short = addr.split(',').slice(0,2).join(', ');
+    const esc = addr.replace(/'/g, "\\'");
+    html += `
+      <div class="station-row" onclick="setStationFilter('${esc}')" style="cursor:pointer">
+        <div>
+          <div class="station-name">⛽ ${short}</div>
+          <div class="station-details">${s.count} pleins • ${s.volume.toFixed(1)}L • Prix moyen ${avgP.toFixed(3)}€/L</div>
+        </div>
+        <div class="station-total">${s.cost.toFixed(2)}€</div>
+      </div>`;
+  });
+  html += '</div>';
+  html += `<div class="card"><div class="card-title">📋 Détail par période</div>`;
+  sortedKeys.reverse().forEach(key => {
+    const g = groups[key];
+    const avgP = g.prices.reduce((a,b)=>a+b,0)/g.prices.length;
+    const label = statsPeriod === 'month' 
+      ? new Date(key+'-01').toLocaleDateString('fr-FR', {month:'long', year:'numeric'})
+      : key;
+    html += `
+      <div class="info-row">
+        <span class="info-label">${label}</span>
+        <span class="info-value">${g.cost.toFixed(0)}€ • ${g.volume.toFixed(0)}L • ${g.count} pleins</span>
+      </div>`;
+  });
+  html += '</div>';
+  html += `
+    <div style="display:flex;gap:0.75rem;margin-top:1rem">
+      <button class="btn btn-secondary" onclick="exportCSV()">📥 Export CSV</button>
+      <button class="btn btn-secondary" onclick="exportJSON()">📥 Export JSON</button>
+    </div>`;
+  container.innerHTML = html;
+  setTimeout(() => {
+    drawBarChart('costChart', sortedKeys, sortedKeys.map(k => groups[k].cost), 'Dépenses (€)', '#0f766e');
+    drawBarChart('volChart', sortedKeys, sortedKeys.map(k => groups[k].volume), 'Volume (L)', '#14b8a6');
+  }, 50);
+}
 
-            const stationStats = {};
-            data.forEach(f => {
-                const addr = f.address || 'Station inconnue';
-                if(!stationStats[addr]) stationStats[addr] = { volume: 0, cost: 0, count: 0, prices: [] };
-                stationStats[addr].volume += f.volume;
-                stationStats[addr].cost += f.total;
-                stationStats[addr].count += 1;
-                stationStats[addr].prices.push(f.pricePerLiter);
-            });
-            const sortedStations = Object.entries(stationStats).sort((a,b) => b[1].cost - a[1].cost);
+function drawBarChart(canvasId, labels, values, label, color) {
+  const canvas = document.getElementById(canvasId);
+  if (!canvas) return;
+  const ctx = canvas.getContext('2d');
+  const dpr = window.devicePixelRatio || 1;
+  const rect = canvas.parentElement.getBoundingClientRect();
+  canvas.width = rect.width * dpr;
+  canvas.height = rect.height * dpr;
+  ctx.scale(dpr, dpr);
+  const w = rect.width, h = rect.height;
+  ctx.clearRect(0, 0, w, h);
+  if (!values.length) return;
+  const max = Math.max(...values) * 1.1;
+  const pad = { top: 30, right: 10, bottom: 40, left: 50 };
+  const cw = w - pad.left - pad.right;
+  const ch = h - pad.top - pad.bottom;
+  const barW = Math.max(20, (cw / values.length) * 0.6);
+  const gap = (cw - barW * values.length) / (values.length + 1);
+  ctx.strokeStyle = getComputedStyle(document.documentElement).getPropertyValue('--border').trim();
+  ctx.lineWidth = 1;
+  for (let i=0; i<=4; i++) {
+    const y = pad.top + ch - (ch/4)*i;
+    ctx.beginPath(); ctx.moveTo(pad.left, y); ctx.lineTo(w - pad.right, y); ctx.stroke();
+    ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--text-secondary').trim();
+    ctx.font = '11px sans-serif'; ctx.textAlign = 'right';
+    ctx.fillText((max/4*i).toFixed(0), pad.left - 8, y + 4);
+  }
+  values.forEach((v, i) => {
+    const x = pad.left + gap + i * (barW + gap);
+    const bh = (v / max) * ch;
+    const y = pad.top + ch - bh;
+    const grad = ctx.createLinearGradient(0, y, 0, y + bh);
+    grad.addColorStop(0, color); grad.addColorStop(1, color + '80');
+    ctx.fillStyle = grad;
+    ctx.beginPath(); ctx.roundRect(x, y, barW, bh, 6); ctx.fill();
+    ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--text').trim();
+    ctx.font = 'bold 11px sans-serif'; ctx.textAlign = 'center';
+    ctx.fillText(v.toFixed(0), x + barW/2, y - 6);
+    ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--text-secondary').trim();
+    ctx.font = '10px sans-serif';
+    let lbl = labels[i];
+    if (lbl.includes('-')) { const [y,m] = lbl.split('-'); lbl = m + '/' + y; }
+    ctx.fillText(lbl, x + barW/2, pad.top + ch + 18);
+  });
+}
 
-            let html = `
-            <div class="stats-grid">
-                <div class="stat-box"><div class="stat-value">${count}</div><div class="stat-label">Pleins</div></div>
-                <div class="stat-box"><div class="stat-value">${totalVol.toFixed(0)}</div><div class="stat-label">Litres totals</div></div>
-                <div class="stat-box"><div class="stat-value">${totalCost.toFixed(0)}€</div><div class="stat-label">Coût total</div></div>
-                <div class="stat-box"><div class="stat-value">${avgPrice.toFixed(3)}€</div><div class="stat-label">Prix moyen/L</div></div>
-            </div>
-            <div class="card">
-                <div class="card-title">📈 Évolution des dépenses</div>
-                <div class="chart-container"><canvas id="costChart"></canvas></div>
-            </div>
-            <div class="card">
-                <div class="card-title">⛽ Volume par période</div>
-                <div class="chart-container"><canvas id="volChart"></canvas></div>
-            </div>
-            <div class="card">
-                <div class="card-title">🗺️ Dépenses par station</div>
-            `;
-            sortedStations.forEach(([addr, s]) => {
-                const avgP = s.prices.reduce((a,b)=>a+b,0)/s.prices.length;
-                const short = addr.split(',').slice(0,2).join(', ');
-                const esc = addr.replace(/'/g, "\\'");
-                html += `
-                <div class="station-row" onclick="setStationFilter('${esc}')" style="cursor:pointer">
-                    <div>
-                        <div class="station-name">⛽ ${short}</div>
-                        <div class="station-details">${s.count} pleins • ${s.volume.toFixed(1)}L • Prix moyen ${avgP.toFixed(3)}€/L</div>
-                    </div>
-                    <div class="station-total">${s.cost.toFixed(2)}€</div>
-                </div>`;
-            });
-            html += '</div>';
-            html += `
-            <div class="card">
-                <div class="card-title">📋 Détail par période</div>
-            `;
-            sortedKeys.reverse().forEach(key => {
-                const g = groups[key];
-                const avgP = g.prices.reduce((a,b)=>a+b,0)/g.prices.length;
-                const label = statsPeriod === 'month' 
-                    ? new Date(key+'-01').toLocaleDateString('fr-FR', {month:'long', year:'numeric'})
-                    : key;
-                html += `
-                <div class="info-row">
-                    <span class="info-label">${label}</span>
-                    <span class="info-value">${g.cost.toFixed(0)}€ • ${g.volume.toFixed(0)}L • ${g.count} pleins</span>
-                </div>`;
-            });
-            html += '</div>';
-            html += `
-            <div style="display:flex;gap:0.75rem;margin-top:1rem">
-                <button class="btn btn-secondary" onclick="exportCSV()">📥 Export CSV</button>
-                <button class="btn btn-secondary" onclick="exportJSON()">📥 Export JSON</button>
-            </div>`;
-            container.innerHTML = html;
-            setTimeout(() => {
-                drawBarChart('costChart', sortedKeys, sortedKeys.map(k => groups[k].cost), 'Dépenses (€)', '#0f766e');
-                drawBarChart('volChart', sortedKeys, sortedKeys.map(k => groups[k].volume), 'Volume (L)', '#14b8a6');
-            }, 50);
-        }
+function exportCSV() {
+  let csv = 'Date,Vehicule,Volume(L),Prix/L(€),Total(€),Kilometrage,Adresse,Latitude,Longitude\n';
+  let data = fills;
+  if (historyFilter !== 'all') data = data.filter(f => f.vehicleId === historyFilter);
+  if (selectedStation !== 'all') data = data.filter(f => f.address === selectedStation);
+  data.forEach(f => {
+    const v = vehicles.find(x => x.id === f.vehicleId);
+    const addr = f.address ? '"' + f.address.replace(/"/g, '""') + '"' : '';
+    csv += `${f.date},${v?v.name:''},${f.volume},${f.pricePerLiter},${f.total},${f.km||''},${addr},${f.location?f.location.lat:''},${f.location?f.location.lng:''}\n`;
+  });
+  downloadFile(csv, 'fueltrack-export.csv', 'text/csv');
+  showToast('Export CSV téléchargé');
+}
 
-        function drawBarChart(canvasId, labels, values, label, color) {
-            const canvas = document.getElementById(canvasId);
-            if(!canvas) return;
-            const ctx = canvas.getContext('2d');
-            const dpr = window.devicePixelRatio || 1;
-            const rect = canvas.parentElement.getBoundingClientRect();
-            canvas.width = rect.width * dpr;
-            canvas.height = rect.height * dpr;
-            ctx.scale(dpr, dpr);
-            const w = rect.width, h = rect.height;
-            ctx.clearRect(0, 0, w, h);
-            if(!values.length) return;
-            const max = Math.max(...values) * 1.1;
-            const pad = { top: 30, right: 10, bottom: 40, left: 50 };
-            const cw = w - pad.left - pad.right;
-            const ch = h - pad.top - pad.bottom;
-            const barW = Math.max(20, (cw / values.length) * 0.6);
-            const gap = (cw - barW * values.length) / (values.length + 1);
-            ctx.strokeStyle = getComputedStyle(document.documentElement).getPropertyValue('--border').trim();
-            ctx.lineWidth = 1;
-            for(let i=0; i<=4; i++) {
-                const y = pad.top + ch - (ch/4)*i;
-                ctx.beginPath(); ctx.moveTo(pad.left, y); ctx.lineTo(w - pad.right, y); ctx.stroke();
-                ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--text-secondary').trim();
-                ctx.font = '11px sans-serif'; ctx.textAlign = 'right';
-                ctx.fillText((max/4*i).toFixed(0), pad.left - 8, y + 4);
-            }
-            values.forEach((v, i) => {
-                const x = pad.left + gap + i * (barW + gap);
-                const bh = (v / max) * ch;
-                const y = pad.top + ch - bh;
-                const grad = ctx.createLinearGradient(0, y, 0, y + bh);
-                grad.addColorStop(0, color); grad.addColorStop(1, color + '80');
-                ctx.fillStyle = grad;
-                ctx.beginPath(); ctx.roundRect(x, y, barW, bh, 6); ctx.fill();
-                ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--text').trim();
-                ctx.font = 'bold 11px sans-serif'; ctx.textAlign = 'center';
-                ctx.fillText(v.toFixed(0), x + barW/2, y - 6);
-                ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--text-secondary').trim();
-                ctx.font = '10px sans-serif';
-                let lbl = labels[i];
-                if(lbl.includes('-')) { const [y,m] = lbl.split('-'); lbl = m + '/' + y; }
-                ctx.fillText(lbl, x + barW/2, pad.top + ch + 18);
-            });
-        }
+function exportJSON() {
+  const acc = accounts.find(a => a.id === currentAccountId);
+  const data = { account: acc, vehicles, fills, exportedAt: new Date().toISOString() };
+  downloadFile(JSON.stringify(data, null, 2), 'fueltrack-backup.json', 'application/json');
+  showToast('Export JSON téléchargé');
+}
 
-        function exportCSV() {
-            let csv = 'Date,Vehicule,Volume(L),Prix/L(€),Total(€),Kilometrage,Adresse,Latitude,Longitude\n';
-            let data = fills;
-            if(historyFilter !== 'all') data = data.filter(f => f.vehicleId === historyFilter);
-            if(selectedStation !== 'all') data = data.filter(f => f.address === selectedStation);
-            data.forEach(f => {
-                const v = vehicles.find(x => x.id === f.vehicleId);
-                const addr = f.address ? '"' + f.address.replace(/"/g, '""') + '"' : '';
-                csv += `${f.date},${v?v.name:''},${f.volume},${f.pricePerLiter},${f.total},${f.km||''},${addr},${f.location?f.location.lat:''},${f.location?f.location.lng:''}\n`;
-            });
-            downloadFile(csv, 'fueltrack-export.csv', 'text/csv');
-            showToast('Export CSV téléchargé');
-        }
+function downloadFile(content, filename, type) {
+  const blob = new Blob([content], { type });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = filename; a.click();
+  URL.revokeObjectURL(url);
+}
 
-        function exportJSON() {
-            const data = { vehicles, fills, exportedAt: new Date().toISOString() };
-            downloadFile(JSON.stringify(data, null, 2), 'fueltrack-backup.json', 'application/json');
-            showToast('Export JSON téléchargé');
-        }
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 3000);
+}
 
-        function downloadFile(content, filename, type) {
-            const blob = new Blob([content], { type });
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url; a.download = filename; a.click();
-            URL.revokeObjectURL(url);
-        }
+function installApp() {
+  if (deferredPrompt) {
+    deferredPrompt.prompt();
+    deferredPrompt.userChoice.then(() => {
+      deferredPrompt = null;
+      document.getElementById('installBanner').classList.remove('show');
+    });
+  }
+}
 
-        function showToast(msg) {
-            const t = document.getElementById('toast');
-            t.textContent = msg;
-            t.classList.add('show');
-            setTimeout(() => t.classList.remove('show'), 3000);
-        }
+document.getElementById('vehicleModal').addEventListener('click', e => { if (e.target === document.getElementById('vehicleModal')) closeVehicleModal(); });
+document.getElementById('fillModal').addEventListener('click', e => { if (e.target === document.getElementById('fillModal')) closeFillModal(); });
+document.getElementById('accountModal').addEventListener('click', e => { if (e.target === document.getElementById('accountModal')) closeAccountModal(); });
 
-        function installApp() {
-            if(deferredPrompt) {
-                deferredPrompt.prompt();
-                deferredPrompt.userChoice.then(() => {
-                    deferredPrompt = null;
-                    document.getElementById('installBanner').classList.remove('show');
-                });
-            }
-        }
-
-        document.getElementById('vehicleModal').addEventListener('click', e => {
-            if(e.target === document.getElementById('vehicleModal')) closeVehicleModal();
-        });
-        document.getElementById('fillModal').addEventListener('click', e => {
-            if(e.target === document.getElementById('fillModal')) closeFillModal();
-        });
-
-        init();
-    </script>
+init();
+</script>
 </body>
 </html>
