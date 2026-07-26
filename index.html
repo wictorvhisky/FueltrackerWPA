@@ -755,7 +755,7 @@ async function preprocessImageForOCR(imageData) {
                 matches.push(parseFloat(m[1].replace(',', '.')));
             }
             // Also extract integers
-            const intRegex = /(\d{1,4})/g;
+            const intRegex = /\b(\d{1,4})\b/g;
             while ((m = intRegex.exec(text)) !== null) {
                 matches.push(parseInt(m[1]));
             }
@@ -806,7 +806,7 @@ async function preprocessImageForOCR(imageData) {
                     }
 
                     // Price per liter: prix du litre, €/L, etc.
-                    if ((lower.match(/\b(prix du litre|prix/l|prix/litre|€\/l|p/l|tarif)\b/) || 
+                    if ((lower.match(/\b(prix du litre|prix\/l|prix\/litre|€\/l|p\/l|tarif)\b/) || 
                          (lower.includes('prix') && lower.includes('litre'))) && numsInLine.length > 0) {
                         const candidates = numsInLine.filter(n => n >= 1.0 && n <= 5.0);
                         if (candidates.length && !price) price = candidates[0];
