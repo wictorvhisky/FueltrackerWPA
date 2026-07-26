@@ -633,10 +633,12 @@ async function preprocessImageForOCR(imageData) {
                 img.onload = () => {
                     const canvas = document.createElement('canvas');
                     const ctx = canvas.getContext('2d');
-                    const scale = 3;
+
+                    // Upscale 4x for 7-segment (no smoothing = sharp edges)
+                    const scale = 4;
                     let w = Math.round(img.width * scale);
                     let h = Math.round(img.height * scale);
-                    const maxDim = 2000;
+                    const maxDim = 2400;
                     if (w > maxDim || h > maxDim) {
                         const ratio = Math.min(maxDim / w, maxDim / h);
                         w = Math.round(w * ratio);
@@ -646,40 +648,69 @@ async function preprocessImageForOCR(imageData) {
                     canvas.height = h;
                     ctx.imageSmoothingEnabled = false;
                     ctx.drawImage(img, 0, 0, w, h);
+
                     const imgData = ctx.getImageData(0, 0, w, h);
                     const data = imgData.data;
                     const pixelCount = w * h;
+
+                    // Step 1: Grayscale
                     const gray = new Uint8Array(pixelCount);
-                    let totalBrightness = 0;
                     for (let i = 0; i < data.length; i += 4) {
-                        const g = 0.299 * data[i] + 0.587 * data[i+1] + 0.114 * data[i+2];
-                        gray[i/4] = g;
-                        totalBrightness += g;
+                        gray[i/4] = Math.round(0.299 * data[i] + 0.587 * data[i+1] + 0.114 * data[i+2]);
                     }
-                    const avgBrightness = totalBrightness / pixelCount;
-                    const isDarkImage = avgBrightness < 120;
-                    let min = 255, max = 0;
+
+                    // Step 2: Otsu thresholding (adaptive, finds optimal threshold)
+                    function otsuThreshold(src, len) {
+                        const hist = new Uint32Array(256);
+                        for (let i = 0; i < len; i++) hist[src[i]]++;
+                        let total = len;
+                        let sum = 0;
+                        for (let i = 0; i < 256; i++) sum += i * hist[i];
+                        let sumB = 0, wB = 0, wF = 0;
+                        let maxVar = 0, threshold = 0;
+                        for (let t = 0; t < 256; t++) {
+                            wB += hist[t];
+                            if (wB === 0) continue;
+                            wF = total - wB;
+                            if (wF === 0) break;
+                            sumB += t * hist[t];
+                            let mB = sumB / wB;
+                            let mF = (sum - sumB) / wF;
+                            let varBetween = wB * wF * (mB - mF) * (mB - mF);
+                            if (varBetween > maxVar) {
+                                maxVar = varBetween;
+                                threshold = t;
+                            }
+                        }
+                        return threshold;
+                    }
+
+                    const thr = otsuThreshold(gray, pixelCount);
+
+                    // Step 3: Binarize + auto-invert if needed
+                    // Detect if image is mostly dark (black background)
+                    let darkPixels = 0;
                     for (let i = 0; i < pixelCount; i++) {
-                        if (gray[i] < min) min = gray[i];
-                        if (gray[i] > max) max = gray[i];
+                        if (gray[i] < thr) darkPixels++;
                     }
-                    const range = max - min || 1;
+                    const isDarkBg = darkPixels > pixelCount / 2;
+
                     const binary = new Uint8Array(pixelCount);
                     for (let i = 0; i < pixelCount; i++) {
-                        let val = ((gray[i] - min) / range) * 255;
-                        const thr = isDarkImage ? 100 : 140;
-                        let bin = val > thr ? 255 : 0;
-                        if (isDarkImage) bin = 255 - bin;
-                        binary[i] = bin;
+                        let isText = gray[i] < thr;  // dark = text
+                        if (isDarkBg) isText = !isText; // invert if dark background
+                        binary[i] = isText ? 0 : 255;  // 0 = black text, 255 = white bg
                     }
-                    function dilate3(src, width, height) {
+
+                    // Step 4: Massive dilation (5 iterations, 5x5 kernel) to fill 7-segment gaps
+                    function dilate(src, width, height, radius) {
                         const dst = new Uint8Array(src);
-                        for (let y = 1; y < height - 1; y++) {
-                            for (let x = 1; x < width - 1; x++) {
+                        for (let y = radius; y < height - radius; y++) {
+                            for (let x = radius; x < width - radius; x++) {
                                 const idx = y * width + x;
                                 if (src[idx] === 0) {
-                                    for (let dy = -1; dy <= 1; dy++) {
-                                        for (let dx = -1; dx <= 1; dx++) {
+                                    for (let dy = -radius; dy <= radius; dy++) {
+                                        for (let dx = -radius; dx <= radius; dx++) {
                                             dst[(y+dy)*width + (x+dx)] = 0;
                                         }
                                     }
@@ -688,49 +719,55 @@ async function preprocessImageForOCR(imageData) {
                         }
                         return dst;
                     }
+
                     let morph = binary;
-                    for (let i = 0; i < 3; i++) morph = dilate3(morph, w, h);
-                    function erode3(src, width, height) {
+                    for (let i = 0; i < 5; i++) morph = dilate(morph, w, h, 2);
+
+                    // Step 5: Light erosion to smooth (1 iteration)
+                    function erode(src, width, height) {
                         const dst = new Uint8Array(src);
                         for (let y = 1; y < height - 1; y++) {
                             for (let x = 1; x < width - 1; x++) {
                                 const idx = y * width + x;
-                                let allWhite = true;
-                                for (let dy = -1; dy <= 1; dy++) {
-                                    for (let dx = -1; dx <= 1; dx++) {
-                                        if (src[(y+dy)*width + (x+dx)] === 0) { allWhite = false; break; }
+                                let hasBlackNeighbor = false;
+                                for (let dy = -1; dy <= 1 && !hasBlackNeighbor; dy++) {
+                                    for (let dx = -1; dx <= 1 && !hasBlackNeighbor; dx++) {
+                                        if (src[(y+dy)*width + (x+dx)] === 0) hasBlackNeighbor = true;
                                     }
-                                    if (!allWhite) break;
                                 }
-                                if (!allWhite) dst[idx] = 0;
+                                if (!hasBlackNeighbor) dst[idx] = 255;
                             }
                         }
                         return dst;
                     }
-                    morph = erode3(morph, w, h);
-                    const pad = 40;
+                    morph = erode(morph, w, h);
+
+                    // Step 6: Add white padding
+                    const pad = 50;
                     const padded = document.createElement('canvas');
                     padded.width = w + pad * 2;
                     padded.height = h + pad * 2;
                     const pctx = padded.getContext('2d');
                     pctx.fillStyle = 'white';
                     pctx.fillRect(0, 0, padded.width, padded.height);
+
                     const pData = pctx.getImageData(pad, pad, w, h);
                     for (let i = 0; i < pixelCount; i++) {
-                        const val = morph[i];
                         const j = i * 4;
-                        pData.data[j] = pData.data[j+1] = pData.data[j+2] = val;
+                        pData.data[j] = pData.data[j+1] = pData.data[j+2] = morph[i];
                         pData.data[j+3] = 255;
                     }
                     pctx.putImageData(pData, pad, pad);
+
                     const processedDataUrl = padded.toDataURL('image/jpeg', 0.95);
+
                     const previewEl = document.getElementById('ocrPreview');
                     const previewImg = document.getElementById('ocrPreviewImg');
                     if (previewEl && previewImg) {
                         previewImg.src = processedDataUrl;
                         previewEl.style.display = 'block';
                     }
-                    resolve({ image: processedDataUrl, isDark: isDarkImage });
+                    resolve({ image: processedDataUrl, isDark: isDarkBg });
                 };
                 img.src = imageData;
             });
@@ -773,24 +810,37 @@ async function preprocessImageForOCR(imageData) {
             try {
                 const { image: processedImage, isDark } = await preprocessImageForOCR(imageData);
                 status.textContent = '🔍 Analyse OCR en cours...';
+
+                // Tesseract with digits-only whitelist for 7-segment displays
                 const result = await Tesseract.recognize(processedImage, 'eng', {
                     logger: m => { 
                         if (m.status === 'recognizing text') status.textContent = `🔍 Analyse... ${Math.round(m.progress*100)}%`; 
                     },
                     errorHandler: err => console.warn('Tesseract warn:', err)
                 });
+
                 let text = result.data.text || '';
                 const lines = (result.data.lines || []).map(l => (l.text || '').trim()).filter(l => l.length > 0);
+                const words = (result.data.words || []).map(w => (w.text || '').trim()).filter(w => w.length > 0);
+
                 console.log('OCR raw text:', JSON.stringify(text));
                 console.log('OCR lines:', lines);
+                console.log('OCR words:', words);
+
                 text = correctOCRText(text);
                 const correctedLines = lines.map(correctOCRText);
+                const correctedWords = words.map(correctOCRText);
+
                 const allNumbers = extractNumbersFromText(text);
                 console.log('All numbers found:', allNumbers);
+
                 let volume = null, price = null, total = null;
+
+                // Strategy 1: Pattern matching by line
                 for (const line of correctedLines) {
                     const lower = line.toLowerCase().replace(/[\s]+/g, ' ');
                     const numsInLine = extractNumbersFromText(line);
+
                     if ((lower.match(/\b(l|litre|litres|volume|vol)\b/) || lower.includes(' litres')) && numsInLine.length > 0) {
                         const candidates = numsInLine.filter(n => n >= 1 && n <= 200);
                         if (candidates.length && !volume) volume = candidates[0];
@@ -806,6 +856,8 @@ async function preprocessImageForOCR(imageData) {
                         if (candidates.length && !total) total = candidates[0];
                     }
                 }
+
+                // Strategy 2: Heuristic classification of all numbers
                 if (!volume || !price) {
                     const decimals = allNumbers.filter(n => String(n).includes('.'));
                     if (!price) {
@@ -821,9 +873,12 @@ async function preprocessImageForOCR(imageData) {
                         if (totalCandidates.length) total = totalCandidates[0];
                     }
                 }
+
+                // Strategy 3: Cross-derive
                 if (volume && total && !price) price = total / volume;
                 if (price && total && !volume) volume = total / price;
                 if (volume && price && !total) total = volume * price;
+
                 let detected = [];
                 if (volume) { 
                     document.getElementById('volumeInput').value = volume.toFixed(2); 
@@ -837,18 +892,23 @@ async function preprocessImageForOCR(imageData) {
                     document.getElementById('totalInput').value = total.toFixed(2); 
                     detected.push(total.toFixed(2) + '€'); 
                 }
+
                 calcTotal();
+
                 let statusMsg = detected.length 
                     ? `✅ Détecté: ${detected.join(' • ')}`
                     : "⚠️ Aucune valeur fiable";
+
                 if (allNumbers.length) {
                     statusMsg += `\n📝 Nombres trouvés: ${allNumbers.join(', ')}`;
                 }
                 if (correctedLines.length) {
                     statusMsg += `\n📄 Texte: ${correctedLines.slice(0,4).join(' | ')}`;
                 }
+
                 status.className = 'ocr-status success';
                 status.innerHTML = statusMsg.replace(/\n/g, '<br>');
+
             } catch(err) {
                 console.error('OCR Error:', err);
                 status.className = 'ocr-status error';
