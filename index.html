@@ -1406,5 +1406,15 @@ document.getElementById('accountModal').addEventListener('click', e => { if (e.t
 
 init();
 </script>
+
+<!-- Camera Overlay -->
+<div class="camera-overlay" id="cameraOverlay">
+    <video class="camera-video" id="cameraVideo" autoplay playsinline></video>
+    <div class="camera-controls">
+        <button class="camera-cancel" onclick="closeCamera()">❌ Annuler</button>
+        <button class="camera-btn" onclick="capturePhoto()"></button>
+    </div>
+</div>
+
 </body>
 </html>
