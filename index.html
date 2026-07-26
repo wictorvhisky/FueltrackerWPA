@@ -633,28 +633,22 @@ async function preprocessImageForOCR(imageData) {
                 img.onload = () => {
                     const canvas = document.createElement('canvas');
                     const ctx = canvas.getContext('2d');
-
-                    // Upscale 2x for better 7-segment recognition
-                    const scale = 2;
-                    const maxWidth = 1600;
-                    let w = img.width * scale, h = img.height * scale;
-                    if (w > maxWidth) {
-                        const ratio = maxWidth / w;
-                        w = maxWidth;
+                    const scale = 3;
+                    let w = Math.round(img.width * scale);
+                    let h = Math.round(img.height * scale);
+                    const maxDim = 2000;
+                    if (w > maxDim || h > maxDim) {
+                        const ratio = Math.min(maxDim / w, maxDim / h);
+                        w = Math.round(w * ratio);
                         h = Math.round(h * ratio);
                     }
                     canvas.width = w;
                     canvas.height = h;
-
-                    // Disable smoothing for sharper edges
                     ctx.imageSmoothingEnabled = false;
                     ctx.drawImage(img, 0, 0, w, h);
-
                     const imgData = ctx.getImageData(0, 0, w, h);
                     const data = imgData.data;
                     const pixelCount = w * h;
-
-                    // Convert to grayscale and analyze brightness
                     const gray = new Uint8Array(pixelCount);
                     let totalBrightness = 0;
                     for (let i = 0; i < data.length; i += 4) {
@@ -662,63 +656,74 @@ async function preprocessImageForOCR(imageData) {
                         gray[i/4] = g;
                         totalBrightness += g;
                     }
-
-                    // Auto-detect if image is mostly dark (like pump screens with black background)
                     const avgBrightness = totalBrightness / pixelCount;
-                    const isDarkImage = avgBrightness < 100;
-
-                    // Adaptive contrast + threshold
-                    // For 7-segment displays: we want thick, clear digits
-                    for (let y = 1; y < h - 1; y++) {
-                        for (let x = 1; x < w - 1; x++) {
-                            const idx = (y * w + x);
-                            const localAvg = (
-                                gray[(y-1)*w + (x-1)] + gray[(y-1)*w + x] + gray[(y-1)*w + (x+1)] +
-                                gray[y*w + (x-1)] + gray[y*w + x] + gray[y*w + (x+1)] +
-                                gray[(y+1)*w + (x-1)] + gray[(y+1)*w + x] + gray[(y+1)*w + (x+1)]
-                            ) / 9;
-
-                            let val = gray[idx];
-
-                            // Increase contrast around local average
-                            if (val > localAvg) {
-                                val = Math.min(255, val + 40);
-                            } else {
-                                val = Math.max(0, val - 40);
-                            }
-
-                            // Threshold
-                            const threshold = isDarkImage ? 120 : 140;
-                            const binary = val > threshold ? 255 : 0;
-
-                            // If dark image, invert so text is black on white (Tesseract prefers this)
-                            const final = isDarkImage ? (255 - binary) : binary;
-
-                            const i = idx * 4;
-                            data[i] = data[i+1] = data[i+2] = final;
-                        }
+                    const isDarkImage = avgBrightness < 120;
+                    let min = 255, max = 0;
+                    for (let i = 0; i < pixelCount; i++) {
+                        if (gray[i] < min) min = gray[i];
+                        if (gray[i] > max) max = gray[i];
                     }
-
-                    // Simple dilation to thicken 7-segment strokes
-                    const dilated = new Uint8ClampedArray(data);
-                    for (let y = 1; y < h - 1; y++) {
-                        for (let x = 1; x < w - 1; x++) {
-                            const idx = (y * w + x) * 4;
-                            if (data[idx] === 0) { // black pixel
-                                // Make neighbor pixels black too
-                                for (let dy = -1; dy <= 1; dy++) {
-                                    for (let dx = -1; dx <= 1; dx++) {
-                                        const nidx = ((y+dy) * w + (x+dx)) * 4;
-                                        dilated[nidx] = dilated[nidx+1] = dilated[nidx+2] = 0;
+                    const range = max - min || 1;
+                    const binary = new Uint8Array(pixelCount);
+                    for (let i = 0; i < pixelCount; i++) {
+                        let val = ((gray[i] - min) / range) * 255;
+                        const thr = isDarkImage ? 100 : 140;
+                        let bin = val > thr ? 255 : 0;
+                        if (isDarkImage) bin = 255 - bin;
+                        binary[i] = bin;
+                    }
+                    function dilate3(src, width, height) {
+                        const dst = new Uint8Array(src);
+                        for (let y = 1; y < height - 1; y++) {
+                            for (let x = 1; x < width - 1; x++) {
+                                const idx = y * width + x;
+                                if (src[idx] === 0) {
+                                    for (let dy = -1; dy <= 1; dy++) {
+                                        for (let dx = -1; dx <= 1; dx++) {
+                                            dst[(y+dy)*width + (x+dx)] = 0;
+                                        }
                                     }
                                 }
                             }
                         }
+                        return dst;
                     }
-
-                    ctx.putImageData(new ImageData(dilated, w, h), 0, 0);
-                    const processedDataUrl = canvas.toDataURL('image/jpeg', 0.95);
-
+                    let morph = binary;
+                    for (let i = 0; i < 3; i++) morph = dilate3(morph, w, h);
+                    function erode3(src, width, height) {
+                        const dst = new Uint8Array(src);
+                        for (let y = 1; y < height - 1; y++) {
+                            for (let x = 1; x < width - 1; x++) {
+                                const idx = y * width + x;
+                                let allWhite = true;
+                                for (let dy = -1; dy <= 1; dy++) {
+                                    for (let dx = -1; dx <= 1; dx++) {
+                                        if (src[(y+dy)*width + (x+dx)] === 0) { allWhite = false; break; }
+                                    }
+                                    if (!allWhite) break;
+                                }
+                                if (!allWhite) dst[idx] = 0;
+                            }
+                        }
+                        return dst;
+                    }
+                    morph = erode3(morph, w, h);
+                    const pad = 40;
+                    const padded = document.createElement('canvas');
+                    padded.width = w + pad * 2;
+                    padded.height = h + pad * 2;
+                    const pctx = padded.getContext('2d');
+                    pctx.fillStyle = 'white';
+                    pctx.fillRect(0, 0, padded.width, padded.height);
+                    const pData = pctx.getImageData(pad, pad, w, h);
+                    for (let i = 0; i < pixelCount; i++) {
+                        const val = morph[i];
+                        const j = i * 4;
+                        pData.data[j] = pData.data[j+1] = pData.data[j+2] = val;
+                        pData.data[j+3] = 255;
+                    }
+                    pctx.putImageData(pData, pad, pad);
+                    const processedDataUrl = padded.toDataURL('image/jpeg', 0.95);
                     const previewEl = document.getElementById('ocrPreview');
                     const previewImg = document.getElementById('ocrPreviewImg');
                     if (previewEl && previewImg) {
@@ -732,32 +737,31 @@ async function preprocessImageForOCR(imageData) {
         }
 
         function correctOCRText(text) {
-            // Post-processing: fix common 7-segment OCR errors
             return text
-                .replace(/[OoQ]/g, '0')
-                .replace(/[lIi]/g, '1')
+                .replace(/[OoQD]/g, '0')
+                .replace(/[lIij]/g, '1')
                 .replace(/[Zz]/g, '2')
                 .replace(/[A]/g, '4')
                 .replace(/[Ss]/g, '5')
                 .replace(/[G]/g, '6')
                 .replace(/[B]/g, '8')
                 .replace(/[gq]/g, '9')
+                .replace(/[\x00-\x1F\x7F-\x9F]/g, '')
                 .replace(/[\s]+/g, ' ')
                 .trim();
         }
 
         function extractNumbersFromText(text) {
-            // Extract all decimal numbers
             const matches = [];
-            const regex = /(\d+[,.]\d{1,4})/g;
+            const regex = /(\d{1,3}[,.]\d{1,4})/g;
             let m;
             while ((m = regex.exec(text)) !== null) {
                 matches.push(parseFloat(m[1].replace(',', '.')));
             }
-            // Also extract integers
             const intRegex = /\b(\d{1,4})\b/g;
             while ((m = intRegex.exec(text)) !== null) {
-                matches.push(parseInt(m[1]));
+                const val = parseInt(m[1]);
+                if (val >= 0 && val <= 999) matches.push(val);
             }
             return matches;
         }
@@ -766,93 +770,61 @@ async function preprocessImageForOCR(imageData) {
             const status = document.getElementById('ocrStatus');
             status.className = 'ocr-status loading';
             status.textContent = "🔍 Préparation de l'image...";
-
             try {
                 const { image: processedImage, isDark } = await preprocessImageForOCR(imageData);
                 status.textContent = '🔍 Analyse OCR en cours...';
-
-                // Optimized Tesseract config for 7-segment digits
-                const result = await Tesseract.recognize(processedImage, 'fra', {
+                const result = await Tesseract.recognize(processedImage, 'eng', {
                     logger: m => { 
                         if (m.status === 'recognizing text') status.textContent = `🔍 Analyse... ${Math.round(m.progress*100)}%`; 
                     },
                     errorHandler: err => console.warn('Tesseract warn:', err)
                 });
-
-                let text = result.data.text;
+                let text = result.data.text || '';
+                const lines = (result.data.lines || []).map(l => (l.text || '').trim()).filter(l => l.length > 0);
                 console.log('OCR raw text:', JSON.stringify(text));
-
-                // Apply corrections
-                text = correctOCRText(text);
-                console.log('OCR corrected:', JSON.stringify(text));
-
-                const lines = text.split(/\r?\n/).map(l => l.trim()).filter(l => l.length > 0);
                 console.log('OCR lines:', lines);
-
+                text = correctOCRText(text);
+                const correctedLines = lines.map(correctOCRText);
                 const allNumbers = extractNumbersFromText(text);
                 console.log('All numbers found:', allNumbers);
-
                 let volume = null, price = null, total = null;
-
-                // Strategy 1: Pattern matching by line
-                for (const line of lines) {
-                    const lower = line.toLowerCase();
+                for (const line of correctedLines) {
+                    const lower = line.toLowerCase().replace(/[\s]+/g, ' ');
                     const numsInLine = extractNumbersFromText(line);
-
-                    // Volume: look for L, litre, volume
-                    if ((lower.match(/\b(l|litre|litres|volume|qty|qte)\b/) || lower.includes(' l')) && numsInLine.length > 0) {
+                    if ((lower.match(/\b(l|litre|litres|volume|vol)\b/) || lower.includes(' litres')) && numsInLine.length > 0) {
                         const candidates = numsInLine.filter(n => n >= 1 && n <= 200);
                         if (candidates.length && !volume) volume = candidates[0];
                     }
-
-                    // Price per liter: prix du litre, €/L, etc.
-                    if ((lower.match(/\b(prix du litre|prix\/l|prix\/litre|€\/l|p\/l|tarif)\b/) || 
+                    if ((lower.match(/\b(prix du litre|prix\/l|prix\/litre|€\/l|p\/l|tarif|price per liter)\b/) || 
                          (lower.includes('prix') && lower.includes('litre'))) && numsInLine.length > 0) {
                         const candidates = numsInLine.filter(n => n >= 1.0 && n <= 5.0);
                         if (candidates.length && !price) price = candidates[0];
                     }
-
-                    // Total price: prix (alone), total, montant
-                    if ((lower.match(/\b(total|montant|amount|a payer|sum)\b/) || 
+                    if ((lower.match(/\b(total|montant|amount|sum)\b/) || 
                          (lower.match(/\bprix\b/) && !lower.includes('litre'))) && numsInLine.length > 0) {
                         const candidates = numsInLine.filter(n => n >= 5 && n <= 500);
                         if (candidates.length && !total) total = candidates[0];
                     }
                 }
-
-                // Strategy 2: Heuristic classification of all numbers
                 if (!volume || !price) {
                     const decimals = allNumbers.filter(n => String(n).includes('.'));
-                    const integers = allNumbers.filter(n => !String(n).includes('.'));
-
-                    // Price per liter: usually 1.x - 2.x with 3 decimals on pumps
                     if (!price) {
                         const priceCandidates = decimals.filter(n => n >= 1.0 && n <= 3.0);
                         if (priceCandidates.length) price = priceCandidates[0];
                     }
-
-                    // Volume: usually 5-150, often with 2 decimals
                     if (!volume) {
                         const volCandidates = allNumbers.filter(n => n >= 5 && n <= 150 && n !== price);
                         if (volCandidates.length) volume = volCandidates[0];
                     }
-
-                    // Total: usually 20-300
                     if (!total) {
-                        const totalCandidates = allNumbers.filter(n => n >= 10 && n <= 300 && n !== volume && n !== price);
+                        const totalCandidates = allNumbers.filter(n => n >= 10 && n <= 500 && n !== volume && n !== price);
                         if (totalCandidates.length) total = totalCandidates[0];
                     }
                 }
-
-                // Strategy 3: Cross-derive missing values
                 if (volume && total && !price) price = total / volume;
                 if (price && total && !volume) volume = total / price;
                 if (volume && price && !total) total = volume * price;
-
-                // Apply to form
                 let detected = [];
-                let debugInfo = [];
-
                 if (volume) { 
                     document.getElementById('volumeInput').value = volume.toFixed(2); 
                     detected.push(volume.toFixed(2) + 'L'); 
@@ -865,25 +837,18 @@ async function preprocessImageForOCR(imageData) {
                     document.getElementById('totalInput').value = total.toFixed(2); 
                     detected.push(total.toFixed(2) + '€'); 
                 }
-
                 calcTotal();
-
-                // Build status message
                 let statusMsg = detected.length 
                     ? `✅ Détecté: ${detected.join(' • ')}`
                     : "⚠️ Aucune valeur fiable";
-
-                // Add debug info
                 if (allNumbers.length) {
                     statusMsg += `\n📝 Nombres trouvés: ${allNumbers.join(', ')}`;
                 }
-                if (lines.length) {
-                    statusMsg += `\n📄 Texte: ${lines.slice(0,3).join(' | ')}`;
+                if (correctedLines.length) {
+                    statusMsg += `\n📄 Texte: ${correctedLines.slice(0,4).join(' | ')}`;
                 }
-
                 status.className = 'ocr-status success';
                 status.innerHTML = statusMsg.replace(/\n/g, '<br>');
-
             } catch(err) {
                 console.error('OCR Error:', err);
                 status.className = 'ocr-status error';
